@@ -70,6 +70,15 @@ def histogram(
             """)
         _a = _a.astype("M8[us]")
 
+    if npu.is_floating(_a) and np.isnan(_a).any():
+        not_nan = ~np.isnan(_a)
+        warnings.warn(f"""
+    Detected nan is removed: {_a.size} -> {np.count_nonzero(not_nan)}
+        """)
+        _a = _a[not_nan]
+        if color is not None:
+            color = np.array(color)[not_nan]
+
     _bins = npu.histogram_bin_edges(_a, bins=_bins)
     bin_width = npu.histogram_bin_widths(_bins)
     x = npu.histogram_bin_centers(_bins)
@@ -81,9 +90,16 @@ def histogram(
         _names = np.array([""] * len(_a))
     else:
         _names = np.array(color)
-        y = np.array([y for name in np.unique(_names)
-                      for y in npu.histogram(_a[_names == name], bins=_bins, density=density)[0]])
-        color = np.array([name for name in np.unique(_names) for _ in x])
+        y = np.array([
+            y
+            for name in np.unique(_names)
+            for y in npu.histogram(_a[_names == name], bins=_bins, density=density)[0]
+        ])
+        color = np.array([
+            name
+            for name in np.unique(_names)
+            for _ in x
+        ])
         assert y.size % x.size == 0
         _n_unique_names = y.size // x.size
         x = np.tile(x, _n_unique_names)
@@ -104,12 +120,16 @@ def histogram(
     )
 
     for trace in fig.data:
-        if trace.yaxis == "y":  # Update Histograms
-            trace.update(
-                hovertemplate=trace.hovertemplate.replace("%{x}", "%{customdata[0]} - %{customdata[1]}"),
-                customdata=np.c_[x - bin_width // 2, x + bin_width // 2]
-            )
+        if np.all(bin_width != 1):
+            if trace.yaxis == "y":  # Update Histograms
+                trace.update(
+                    hovertemplate=trace.hovertemplate.replace("%{x}", "%{customdata[0]} - %{customdata[1]}"),
+                    customdata=np.c_[x - bin_width // 2, x + bin_width // 2]
+                )
+        elif np.any(bin_width != 1):
+            warnings.warn("Not implemented in a variable-bin-width case")
+
         if marginal is not None and marginal != "":
-            if trace.yaxis == "y2":  # Update Marginal Plots
+            if trace.yaxis == "y2":  # Replace the binned marginal plots to the unbinned ones
                 trace.x = _a[_names == trace.name]
     return fig
