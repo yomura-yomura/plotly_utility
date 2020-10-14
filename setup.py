@@ -2,14 +2,15 @@ from setuptools import setup, find_packages
 
 setup(
     name='plotly_utility',
-    version='1.1',
+    version='1.2',
     description='',
     author='yomura',
     author_email='yomura@hoge.jp',
     url='https://github.com/yomura-yomura/plotly_utlility',
     packages=find_packages(),
     install_requires=[
-        "numpy", "plotly",
-        "numpy_utility @ git+https://github.com/yomura-yomura/numpy_utlility",
+        "numpy",
+        "plotly",
+        "numpy_utility @ git+https://github.com/yomura-yomura/numpy_utility",
     ]
 )
