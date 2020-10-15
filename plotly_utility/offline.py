@@ -1,6 +1,7 @@
 import numpy as np
+import numpy_utility as npu
 import collections.abc
-import plotly.offline as pyo
+import plotly
 import os
 import webbrowser
 
@@ -69,7 +70,7 @@ def _write_figs_to(dashboard, figs):
         elif fig == {}:
             pass
         else:
-            inner_html = pyo.plot(
+            inner_html = plotly.offline.plot(
                 fig, include_plotlyjs=add_js, output_type='div', config=DEFAULT_CHART_CONFIG
             )
             dashboard.write(f'{inner_html}')
@@ -79,6 +80,13 @@ def _write_figs_to(dashboard, figs):
 
 
 def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=True):
+    if isinstance(figs, plotly.graph_objs.Figure):
+        figs = [figs]
+    elif npu.is_array(figs):
+        pass
+    else:
+        raise ValueError(type(figs))
+
     dashboard = open(filename, 'w')
     head = '''    
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
