@@ -11,7 +11,7 @@ __all__ = ["histogram"]
 def histogram(
     data_frame=None,
     x=None,
-    # y=None,
+    y=None,
     color=None,
     facet_row=None,
     facet_col=None,
@@ -47,6 +47,17 @@ def histogram(
     """
     Precomputing histogram binning in Python, not in Javascript.
     """
+    args = px._core.build_dataframe(locals(), go.histogram)
+    color = args["data_frame"][args["color"]] if args["color"] is not None else None
+
+    if x is not None and y is None:
+        x = args["data_frame"][args["x"]].to_numpy()
+        orientation = "v"
+    elif x is None and y is not None:
+        x = args["data_frame"][args["y"]].to_numpy()
+        orientation = "h"
+    else:
+        raise NotImplementedError
 
     if histnorm is None or histnorm == "":
         density = False
@@ -105,13 +116,17 @@ def histogram(
         x = np.tile(x, _n_unique_names)
         bin_width = np.tile(bin_width, _n_unique_names)
 
+    if orientation == "h":
+        x, y = y, x
+
     fig = px._core.make_figure(
         args=locals(),
         constructor=go.Bar,
         trace_patch=dict(
             textposition="auto",
             width=bin_width // 1000 if np.issubdtype(x.dtype, np.datetime64) else bin_width,
-            marker_line_width=0
+            marker_line_width=0,
+            orientation=orientation
         ),
         layout_patch=dict(
             barmode=barmode,

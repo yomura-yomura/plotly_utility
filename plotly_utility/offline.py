@@ -24,6 +24,7 @@ DEFAULT_CHART_CONFIG = {
                 'hoverCompareCartesian'
             ]
         ],
+        "showSendToCloud": True,
         "plotlyServerURL": "https://chart-studio.plotly.com",
         "toImageButtonOptions": dict(
             format="svg"
