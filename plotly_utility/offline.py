@@ -143,7 +143,8 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
                 float_vars = vars[[npu.is_floating(np.array(eval(f"trace.{var}", {"trace": trace}))) for var, _ in vars]]
                 trace.hovertemplate = functools.reduce(
                     lambda s, rpl: s.replace(*rpl),
-                    zip(npu.char.join(":", float_vars, axis=1), (f"{fv}:{hovertext_format}" for fv, _ in float_vars)),
+                    zip(np.char.add(np.char.add("%{", npu.char.join(":", float_vars, axis=1)), "}"),
+                        (f"%{{{fv}:{hovertext_format}}}" for fv, _ in float_vars)),
                     trace.hovertemplate
                 )
             if replace_none_titles:
