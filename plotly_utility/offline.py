@@ -4,8 +4,12 @@ import collections.abc
 import plotly
 import os
 import webbrowser
+import re
+import functools
+
 
 __all__ = ["figures_to_html", "plot"]
+
 
 DEFAULT_CHART_CONFIG = {
         'modeBarButtons': [
@@ -88,6 +92,9 @@ def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=Tr
     else:
         raise ValueError(type(figs))
 
+    if filename is None or filename == "":
+        filename = "temp-plot.html"
+
     dashboard = open(filename, 'w')
     head = '''    
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
@@ -120,4 +127,30 @@ def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=Tr
         webbrowser.open(url)
 
 
-plot = figures_to_html
+def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
+         hovertext_format=".2f", replace_none_titles=True):
+    if isinstance(figs, plotly.graph_objs.Figure):
+        figs = [figs]
+    elif npu.is_array(figs):
+        pass
+    else:
+        raise ValueError(type(figs))
+
+    for fig in np.ravel(figs):
+        for trace in fig.data:
+            if hovertext_format is not None and trace.hovertemplate is not None:
+                vars = npu.ma.from_jagged_array([m.split(":") for m in re.findall("%{([^}]+)}", trace.hovertemplate)], 2)
+                float_vars = vars[[npu.is_floating(np.array(eval(f"trace.{var}", {"trace": trace}))) for var, _ in vars]]
+                trace.hovertemplate = functools.reduce(
+                    lambda s, rpl: s.replace(*rpl),
+                    zip(npu.char.join(":", float_vars, axis=1), (f"{fv}:{hovertext_format}" for fv, _ in float_vars)),
+                    trace.hovertemplate
+                )
+            if replace_none_titles:
+                if fig.layout.title.text is None:
+                    fig.layout.title.text = ""
+                for axis in (fig.layout[k] for k in fig.layout if k.startswith("xaxis") or k.startswith("yaxis")):
+                    if axis.title.text is None:
+                        axis.title.text = ""
+
+    figures_to_html(figs, filename, auto_open, editable)
