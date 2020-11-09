@@ -3,9 +3,14 @@ import numpy_utility as npu
 import warnings
 import plotly.express as px
 import plotly.graph_objs as go
+import pandas as pd
+import plotly_utility
 
 
 __all__ = ["histogram"]
+
+
+possible_marginal_types = ["", "rug", "box", "violin", "histogram"]
 
 
 def histogram(
@@ -42,94 +47,132 @@ def histogram(
     title=None,
     template=None,
     width=None,
-    height=None,
+    height=None
 ):
     """
     Precomputing histogram binning in Python, not in Javascript.
     """
-    args = px._core.build_dataframe(locals(), go.histogram)
-    color = args["data_frame"][args["color"]] if args["color"] is not None else None
+    if marginal is None:
+        pass
+    elif marginal not in possible_marginal_types:
+        raise ValueError(f"""
+    Got invalid marginal '{marginal}.
+    Possible marginal: {", ".join(possible_marginal_types)}
+        """)
 
-    if x is not None and y is None:
-        x = args["data_frame"][args["x"]].to_numpy()
-        orientation = "v"
-    elif x is None and y is not None:
-        x = args["data_frame"][args["y"]].to_numpy()
-        orientation = "h"
-    else:
-        raise NotImplementedError
+    args = px._core.build_dataframe(locals().copy(), go.Histogram)
 
-    if histnorm is None or histnorm == "":
+    if args["histnorm"] is None or args["histnorm"] == "":
         density = False
-    elif histnorm == "probability density":
+    elif args["histnorm"] == "probability density":
         density = True
     else:
-        raise NotImplementedError(f"histnorm={histnorm} not supported yet")
+        raise NotImplementedError(f"histnorm={args['histnorm']} not supported yet")
 
-    if nbins is None:
-        _bins = "auto"
+    if args["nbins"] is None:
+        bins = "auto"
     else:
-        _bins = nbins
+        bins = args["nbins"]
 
-    _a = np.array(x)
-    if np.issubdtype(x.dtype, np.datetime64):
-        if np.array(1, x.dtype).astype("M8[us]").view(int) == 0:
+    if (args["x"] is None) and (args["y"] is None):
+        return px.bar()
+    elif (args["x"] is not None) and (args["y"] is None):
+        args["y"] = "y"
+        swap_xy = False
+    elif (args["x"] is None) and (args["y"] is not None):
+        args["x"] = "x"
+        args["x"], args["y"] = args["y"], args["x"]
+        swap_xy = True
+    else:
+        raise NotImplementedError("Not supported yet in the case x and y are not None ")
+
+    # args["data_frame"] = args["data_frame"].dropna(subset=[args["x"]])
+    args["data_frame"] = args["data_frame"][np.isfinite(args["data_frame"][args["x"]].to_numpy())]
+    data = args["data_frame"][args["x"]].to_numpy()
+
+    if np.issubdtype(data.dtype, np.datetime64):
+        x_converted = data.astype("M8[us]")
+        if x_converted.size != data.size:
             warnings.warn(f"""
     histogram does not draw accurately using datetime objects with more precise unit than [us]:
-        the maximum number of bins: {len(np.unique(_a))} -> {len(np.unique(_a.astype('M8[us]')))}
+        the maximum number of bins: {len(np.unique(data))} -> {len(np.unique(x_converted))}
     For more accurate histogram, You should use px.histogram or lose the precise somehow.
             """)
-        _a = _a.astype("M8[us]")
+        data = x_converted
 
-    if npu.is_floating(_a) and np.isnan(_a).any():
-        not_nan = ~np.isnan(_a)
-        warnings.warn(f"""
-    Detected nan is removed: {_a.size} -> {np.count_nonzero(not_nan)}
-        """)
-        _a = _a[not_nan]
-        if color is not None:
-            color = np.array(color)[not_nan]
+    bins = npu.histogram_bin_edges(data, bins=bins)
+    bin_width = npu.histogram_bin_widths(bins)
+    x = npu.histogram_bin_centers(bins)
 
-    _bins = npu.histogram_bin_edges(_a, bins=_bins)
-    bin_width = npu.histogram_bin_widths(_bins)
-    x = npu.histogram_bin_centers(_bins)
-    if len(x) == 0:
+    if len(data) == 0:
         return px.bar()
 
-    if color is None:
-        y, _ = npu.histogram(_a, bins=_bins, density=density)
-        _names = np.array([""] * len(_a))
+    use_one_plot = (args["color"] is None) and (args["facet_row"] is None) and (args["facet_col"] is None)
+
+    if use_one_plot:
+        y, _ = npu.histogram(data, bins=bins, density=density)
+        data_classes = np.array([""] * len(data))
+        args["data_frame"] = pd.DataFrame()
     else:
-        _names = np.array(color)
+        groups = []
+        if args["color"] is not None:
+            groups.append(args["data_frame"][args["color"]])
+        if args["facet_row"] is not None:
+            groups.append(args["data_frame"][args["facet_row"]])
+        if args["facet_col"] is not None:
+            groups.append(args["data_frame"][args["facet_col"]])
+
+        data_classes = np.array(np.transpose(groups).tolist())
+        un = np.unique(data_classes, axis=0)
         y = np.array([
             y
-            for name in np.unique(_names)
-            for y in npu.histogram(_a[_names == name], bins=_bins, density=density)[0]
+            for name in un
+            for y in npu.histogram(data[np.all(data_classes == name, axis=1)], bins=bins, density=density)[0]
         ])
-        color = np.array([
+        groups = np.array([
             name
-            for name in np.unique(_names)
+            for name in un
             for _ in x
-        ])
+        ]).T.tolist()
+
+        args["data_frame"] = pd.DataFrame()
+
+        if args["facet_col"] is not None:
+            args["data_frame"][args["facet_col"]] = groups.pop()
+        if args["facet_row"] is not None:
+            args["data_frame"][args["facet_row"]] = groups.pop()
+        if args["color"] is not None:
+            args["data_frame"][args["color"]] = groups.pop()
+
         assert y.size % x.size == 0
         _n_unique_names = y.size // x.size
         x = np.tile(x, _n_unique_names)
         bin_width = np.tile(bin_width, _n_unique_names)
 
-    if orientation == "h":
-        x, y = y, x
+    args["data_frame"][args["x"]] = x
+    args["data_frame"][args["y"]] = y
+    # print(args)
+
+    if swap_xy:
+        args["x"], args["y"] = args["y"], args["x"]
+        args["orientation"] = "h"
+        args["labels"] = {"x": "count"}
+        target = "y"
+    else:
+        args["labels"] = {"y": "count"}
+        target = "x"
 
     fig = px._core.make_figure(
-        args=locals(),
+        args=args,
         constructor=go.Bar,
         trace_patch=dict(
             textposition="auto",
-            width=bin_width // 1000 if np.issubdtype(x.dtype, np.datetime64) else bin_width,
+            width=bin_width // 1000 if np.issubdtype(data.dtype, np.datetime64) else bin_width,
             marker_line_width=0,
-            orientation=orientation
+            orientation=args["orientation"]
         ),
         layout_patch=dict(
-            barmode=barmode,
+            barmode=args["barmode"],
             bargap=0
         )
     )
@@ -138,13 +181,23 @@ def histogram(
         if np.all(bin_width != 1):
             if trace.yaxis == "y":  # Update Histograms
                 trace.update(
-                    hovertemplate=trace.hovertemplate.replace("%{x}", "%{customdata[0]} - %{customdata[1]}"),
+                    hovertemplate=trace.hovertemplate.replace(f"%{{{target}}}", "%{customdata[0]} - %{customdata[1]}"),
                     customdata=np.c_[x - bin_width // 2, x + bin_width // 2]
                 )
         elif np.any(bin_width != 1):
-            warnings.warn("Not implemented in a variable-bin-width case")
+            warnings.warn("Not implemented in a variable-bin-width case. Hover-data is disabled.")
 
-        if marginal is not None and marginal != "":
-            if trace.yaxis == "y2":  # Replace the binned marginal plots to the unbinned ones
-                trace.x = _a[_names == trace.name]
+    has_marginal = args["marginal"] is not None and args["marginal"] != ""
+    if has_marginal:
+        # marginal_traces = plotly_utility.get_traces_at(fig, 2, "all")
+        marginal_traces = [t for t in fig.data if t.type in possible_marginal_types]
+        if use_one_plot:
+            assert len(marginal_traces) == 1
+            marginal_traces[0].x = data
+        else:
+            assert len(marginal_traces) == len(un)
+            for trace, n in zip(marginal_traces, un):
+                # Replace the binned marginal plots to the unbinned ones
+                trace.x = data[np.all(data_classes == n, axis=1)]
+
     return fig

@@ -9,18 +9,28 @@ import numpy as np
 
 
 def get_traces_at(fig: go.Figure, row=1, col=1):
-    row -= 1
-    col -= 1
-    domain = fig._grid_ref[row][col]
-    assert len(domain) == 1
-    x_anchor = domain[0].trace_kwargs["xaxis"]
-    y_anchor = domain[0].trace_kwargs["yaxis"]
+    if fig._grid_ref is None:
+        assert row is None and col is None
+        x_anchors = ["x"]
+        y_anchors = ["y"]
+    else:
+        gr = np.array(fig._grid_ref)
+        n_row, n_col, n_data, *_ = gr.shape
+        if row == "all":
+            row = np.arange(n_row) + 1
+        if col == "all":
+            col = np.arange(n_col) + 1
+
+        trace_kwargs = gr[row-1][col-1][..., -1].flatten()
+        x_anchors = [tk["xaxis"] for tk in trace_kwargs]
+        y_anchors = [tk["yaxis"] for tk in trace_kwargs]
+
     return [
         trace for trace in fig.data
         if (
-            trace.xaxis == x_anchor if trace.xaxis is not None else "x" == x_anchor
+            trace.xaxis in x_anchors if trace.xaxis is not None else "x" in x_anchors
         ) and (
-            trace.yaxis == y_anchor if trace.yaxis is not None else "y" == y_anchor
+            trace.yaxis in y_anchors if trace.yaxis is not None else "y" in y_anchors
         )
     ]
 
@@ -102,4 +112,29 @@ def add_secondary_axis(fig: go.Figure, row=1, col=1, i_data=1, anchor="x",
         trace.hovertemplate += f"<br>{var_name}=%{{customdata[{i}]}}{x_suffix}"
 
     return fig
+
+
+def get_data(fig, i_data=1, reverse_along_row=True):
+    n_row, n_col, n_data, *_ = np.shape(fig._grid_ref)
+    assert 0 < i_data <= n_data
+
+    traces = np.array([
+        [
+            matched_traces[i_data - 1] if len(matched_traces) >= i_data else None
+            for matched_traces in (get_traces_at(fig, row, col) for col in range(1, n_col+1))
+        ]
+        for row in range(1, n_row+1)
+    ])
+    x, *other_unique_x = np.unique([t.x for trace_rows in traces for t in trace_rows if t], axis=0)
+    assert len(other_unique_x) == 0
+
+    mask = traces == None
+
+    y = np.ma.empty((*mask.shape, x.size))
+    y.mask = True
+    y[~mask] = [t.y for trace_rows in traces for t in trace_rows if t]
+    y.mask &= mask[..., np.newaxis]
+    if reverse_along_row:
+        y = y[::-1]
+    return x, y
 

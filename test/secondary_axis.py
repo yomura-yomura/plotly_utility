@@ -5,7 +5,7 @@ from plotly.offline import plot
 
 np.random.seed(0)
 
-fig = pux.histogram(x=np.random.normal(size=1_000))
+fig = pux.histogram(data=np.random.normal(size=1_000))
 trace = plotly_utility.get_traces_at(fig)[0]
 area = (trace.width * trace.y).sum()
 scale = 1/area*100
