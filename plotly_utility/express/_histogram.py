@@ -7,10 +7,22 @@ import pandas as pd
 import plotly_utility
 
 
-__all__ = ["histogram"]
+__all__ = ["histogram", "make_histograms_with_facet_col"]
 
 
 possible_marginal_types = ["", "rug", "box", "violin", "histogram"]
+
+
+def _build_dataframe(args):
+    if args["weight"] is not None:
+        weight = args["data_frame"][args["weight"]]
+        args = px._core.build_dataframe(args, go.Histogram)
+        assert "weight" not in args["data_frame"].columns
+        args["data_frame"]["weight"] = weight
+    else:
+        args = px._core.build_dataframe(args, go.Histogram)
+        assert "weight" not in args["data_frame"].columns
+    return args
 
 
 def histogram(
@@ -47,20 +59,27 @@ def histogram(
     title=None,
     template=None,
     width=None,
-    height=None
+    height=None,
+
+    weight=None,
+    as_qualitative=False
 ):
     """
     Precomputing histogram binning in Python, not in Javascript.
     """
-    if marginal is None:
+
+    args = _build_dataframe(locals())
+    return _histogram(args)
+
+
+def _histogram(args):
+    if args["marginal"] is None:
         pass
-    elif marginal not in possible_marginal_types:
+    elif args["marginal"] not in possible_marginal_types:
         raise ValueError(f"""
-    Got invalid marginal '{marginal}.
+    Got invalid marginal '{args['marginal']}'.
     Possible marginal: {", ".join(possible_marginal_types)}
         """)
-
-    args = px._core.build_dataframe(locals().copy(), go.Histogram)
 
     if args["histnorm"] is None or args["histnorm"] == "":
         density = False
@@ -76,19 +95,35 @@ def histogram(
 
     if (args["x"] is None) and (args["y"] is None):
         return px.bar()
-    elif (args["x"] is not None) and (args["y"] is None):
+    elif (args["x"] is not None) and (args["y"] is None or args["y"] not in args["data_frame"].columns):
         args["y"] = "y"
         swap_xy = False
-    elif (args["x"] is None) and (args["y"] is not None):
+    elif (args["x"] is None or args["x"] not in args["data_frame"].columns) and (args["y"] is not None):
         args["x"] = "x"
         args["x"], args["y"] = args["y"], args["x"]
         swap_xy = True
     else:
         raise NotImplementedError("Not supported yet in the case x and y are not None ")
 
+    if args["as_qualitative"]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            args["data_frame"].loc[:, args["x"]] = args["data_frame"].loc[:, args["x"]].astype(str)
+
     # args["data_frame"] = args["data_frame"].dropna(subset=[args["x"]])
-    args["data_frame"] = args["data_frame"][np.isfinite(args["data_frame"][args["x"]].to_numpy())]
     data = args["data_frame"][args["x"]].to_numpy()
+    if npu.is_numeric(data):
+        is_category = False
+        sel = np.isfinite(data)
+        args["data_frame"] = args["data_frame"][sel]
+        data = args["data_frame"][args["x"]].to_numpy()
+    else:
+        is_category = True
+
+    if np.issubdtype(data.dtype, np.object_):
+        data = np.array(data.tolist())
+
+    weight = args["data_frame"]["weight"] if "weight" in args["data_frame"] else None
 
     if np.issubdtype(data.dtype, np.datetime64):
         x_converted = data.astype("M8[us]")
@@ -100,7 +135,7 @@ def histogram(
             """)
         data = x_converted
 
-    bins = npu.histogram_bin_edges(data, bins=bins)
+    bins = npu.histogram_bin_edges(data, bins=bins, weights=weight)
     bin_width = npu.histogram_bin_widths(bins)
     x = npu.histogram_bin_centers(bins)
 
@@ -110,7 +145,7 @@ def histogram(
     use_one_plot = (args["color"] is None) and (args["facet_row"] is None) and (args["facet_col"] is None)
 
     if use_one_plot:
-        y, _ = npu.histogram(data, bins=bins, density=density)
+        y, _ = npu.histogram(data, bins=bins, density=density, weights=weight)
         data_classes = np.array([""] * len(data))
         args["data_frame"] = pd.DataFrame()
     else:
@@ -124,11 +159,16 @@ def histogram(
 
         data_classes = np.array(np.transpose(groups).tolist())
         un = np.unique(data_classes, axis=0)
+
         y = np.array([
             y
-            for name in un
-            for y in npu.histogram(data[np.all(data_classes == name, axis=1)], bins=bins, density=density)[0]
+            for d, w in (
+                (data[sel], weight[sel] if weight is not None else None)
+                for sel in (np.all(data_classes == n, axis=1) for n in un)
+            )
+            for y in npu.histogram(d, bins=bins, density=density, weights=w)[0]
         ])
+
         groups = np.array([
             name
             for name in un
@@ -151,7 +191,6 @@ def histogram(
 
     args["data_frame"][args["x"]] = x
     args["data_frame"][args["y"]] = y
-    # print(args)
 
     if swap_xy:
         args["x"], args["y"] = args["y"], args["x"]
@@ -177,15 +216,18 @@ def histogram(
         )
     )
 
-    for trace in fig.data:
-        if np.all(bin_width != 1):
-            if trace.yaxis == "y":  # Update Histograms
-                trace.update(
-                    hovertemplate=trace.hovertemplate.replace(f"%{{{target}}}", "%{customdata[0]} - %{customdata[1]}"),
-                    customdata=np.c_[x - bin_width // 2, x + bin_width // 2]
-                )
-        elif np.any(bin_width != 1):
-            warnings.warn("Not implemented in a variable-bin-width case. Hover-data is disabled.")
+    if is_category:
+        fig.update_xaxes(type="category")
+
+    # for trace in fig.data:
+    #     if np.all(bin_width != 1):
+    #         if trace.yaxis == "y":  # Update Histograms
+    #             trace.update(
+    #                 hovertemplate=trace.hovertemplate.replace(f"%{{{target}}}", "%{customdata[0]} - %{customdata[1]}"),
+    #                 customdata=np.c_[x - bin_width // 2, x + bin_width // 2]
+    #             )
+    #     elif np.any(bin_width != 1):
+    #         warnings.warn("Not implemented in a variable-bin-width case. Hover-data is disabled.")
 
     has_marginal = args["marginal"] is not None and args["marginal"] != ""
     if has_marginal:
@@ -201,3 +243,63 @@ def histogram(
                 trace.x = data[np.all(data_classes == n, axis=1)]
 
     return fig
+
+
+def make_histograms_with_facet_col(
+    data_frame=None,
+    x=None,
+    y=None,
+    color=None,
+    facet_row=None,
+    facet_col=None,
+    facet_col_wrap=0,
+    facet_row_spacing=None,
+    facet_col_spacing=None,
+    hover_name=None,
+    hover_data=None,
+    animation_frame=None,
+    animation_group=None,
+    # category_orders={},
+    labels={},
+    color_discrete_sequence=None,
+    color_discrete_map={},
+    marginal=None,
+    opacity=None,
+    orientation=None,
+    barmode="relative",
+    barnorm=None,
+    histnorm=None,
+    log_x=False,
+    log_y=False,
+    range_x=None,
+    range_y=None,
+    # histfunc=None,
+    # cumulative=None,
+    nbins=None,
+    title=None,
+    template=None,
+    width=None,
+    height=None,
+
+    weight=None,
+    as_qualitative=False
+):
+    args = _build_dataframe(locals())
+    return _make_histograms_with_facet_col(args)
+
+
+def _make_histograms_with_facet_col(args):
+    if args["facet_col"] is None:
+        raise ValueError(f"facet_col argument must be specified")
+
+    df = args["data_frame"]
+    unique_seperater, indices = np.unique(df[args["facet_col"]], return_index=True)
+    unique_seperater = unique_seperater[indices.argsort()]
+
+    n_pages = unique_seperater.size // 50 + 1
+    for sep_at_page in np.array_split(unique_seperater, n_pages):
+        args["data_frame"] = df[np.isin(df[args["facet_col"]], sep_at_page)]
+        args["facet_col_wrap"] = int(np.ceil(np.sqrt(len(sep_at_page))))
+        args["category_orders"] = {"facet_col": sep_at_page.tolist()}
+        yield _histogram(args)
+

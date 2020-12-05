@@ -137,6 +137,8 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
         raise ValueError(type(figs))
 
     for fig in np.ravel(figs):
+        if fig is None:
+            continue
         for trace in fig.data:
             if hovertext_format is not None and trace.hovertemplate is not None:
                 vars = npu.ma.from_jagged_array([m.split(":") for m in re.findall("%{([^}]+)}", trace.hovertemplate)], 2)
