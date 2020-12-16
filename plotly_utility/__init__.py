@@ -1,11 +1,16 @@
 from . import graph_objects
 from . import offline
 
-__all__ = ["express", "graph_objects", "offline"]
+__all__ = [
+    "express", "graph_objects", "offline",
 
+    "get_traces_at", "add_secondary_axis", "get_data",
+    "to_numpy"
+]
 
 import plotly.graph_objects as go
 import numpy as np
+import numpy_utility as npu
 
 
 def get_traces_at(fig: go.Figure, row=1, col=1):
@@ -138,3 +143,53 @@ def get_data(fig, i_data=1, reverse_along_row=True):
         y = y[::-1]
     return x, y
 
+
+def to_numpy(fig, return_coords=False):
+    traces = [[get_traces_at(fig, ir + 1, ic + 1) for ic, _ in enumerate(r)]
+              for ir, r in enumerate(fig._grid_ref)]
+
+    len_traces = npu.ma.apply(len, traces)
+    max_n_traces = np.max(len_traces)
+
+    def traces_to_numpy_array(traces):
+        return [
+            (
+                traces[i]["hovertemplate"].split("<br>")[0].split("=")[1] if traces[i]["hovertemplate"] is not None else "",
+                traces[i].x,
+                traces[i].y,
+                traces[i].error_x.array if traces[i].error_x.array is not None else [],
+                traces[i].error_y.array if traces[i].error_y.array is not None else []
+            ) if i < len(traces) else ("", [], [], [], [])
+            for i in range(max_n_traces)
+        ]
+    data = npu.ma.apply(traces_to_numpy_array, traces)
+
+    data = np.rec.fromarrays(np.rollaxis(data, -1), names=["facet_col", "x", "y", "error_x", "error_y"]).view(np.ma.MaskedArray)
+    data.mask = len_traces[..., np.newaxis] <= np.expand_dims(np.arange(max_n_traces), tuple(range(len_traces.ndim)))
+
+    if hasattr(fig, "_fit_results"):
+        import standard_fit as sf
+        fr = npu.from_dict({"fit_result": sf.to_numpy(fig._fit_results)})
+        if fr.shape[2] < data.shape[2]:
+            new_fr = np.ma.empty(data.shape, fr.dtype)
+            new_fr.mask = True
+            new_fr[:, :, :fr.shape[2]] = fr
+            fr = new_fr
+
+        data = npu.ma.merge_arrays((data, fr))
+
+    reverse_along_rows = True
+    if reverse_along_rows:
+        data = data[::-1]
+
+    # data = np.swapaxes(npu.ma.from_jagged_array(npu.ma.apply(traces_to_numpy_array, traces)), -2, -1)
+
+    if return_coords:
+        coords = {
+            "row": np.arange(data.shape[0]),
+            "column": np.arange(data.shape[1]),
+            "trace": np.arange(data.shape[2])
+        }
+        return data, coords
+    else:
+        return data
