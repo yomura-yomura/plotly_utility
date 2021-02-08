@@ -13,6 +13,14 @@ import numpy as np
 import numpy_utility as npu
 
 
+def get_row_col(fig, xaxis, yaxis):
+    table = npu.ja.apply(lambda ref: tuple(ref.trace_kwargs.values()), fig._grid_ref, 3).squeeze()
+    matched = np.argwhere(np.all(table == (xaxis, yaxis), axis=-1))
+    if len(matched) == 0:
+        raise ValueError(f"xaxis '{xaxis}' and yaxis '{yaxis}' not found.")
+    return matched[0] + 1
+
+
 def get_traces_at(fig: go.Figure, row=1, col=1):
     if fig._grid_ref is None:
         assert row is None and col is None
@@ -148,7 +156,7 @@ def to_numpy(fig, return_coords=False):
     traces = [[get_traces_at(fig, ir + 1, ic + 1) for ic, _ in enumerate(r)]
               for ir, r in enumerate(fig._grid_ref)]
 
-    len_traces = npu.ma.apply(len, traces)
+    len_traces = npu.ja.apply(len, traces)
     max_n_traces = np.max(len_traces)
 
     def traces_to_numpy_array(traces):
@@ -162,10 +170,11 @@ def to_numpy(fig, return_coords=False):
             ) if i < len(traces) else ("", [], [], [], [])
             for i in range(max_n_traces)
         ]
-    data = npu.ma.apply(traces_to_numpy_array, traces)
+    data = npu.ja.apply(traces_to_numpy_array, traces)
 
     data = np.rec.fromarrays(np.rollaxis(data, -1), names=["facet_col", "x", "y", "error_x", "error_y"]).view(np.ma.MaskedArray)
     data.mask = len_traces[..., np.newaxis] <= np.expand_dims(np.arange(max_n_traces), tuple(range(len_traces.ndim)))
+    data["facet_col"].mask |= data["facet_col"] == ""
 
     if hasattr(fig, "_fit_results"):
         import standard_fit as sf

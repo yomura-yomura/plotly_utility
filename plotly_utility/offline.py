@@ -141,7 +141,8 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
             continue
         for trace in fig.data:
             if hovertext_format is not None and trace.hovertemplate is not None:
-                vars = npu.ma.from_jagged_array([m.split(":") for m in re.findall(r"%{([^}]+)}", trace.hovertemplate)], 2)
+                vars = npu.ja.from_jagged_array([m.split(":") for m in re.findall(r"%{([^}]+)}", trace.hovertemplate)],
+                                                horizontal_size=2)
                 float_vars = vars[[npu.is_floating(np.array(eval(f"trace.{var}", {"trace": trace}))) for var, *_ in vars]]
                 trace.hovertemplate = functools.reduce(
                     lambda s, rpl: s.replace(*rpl),

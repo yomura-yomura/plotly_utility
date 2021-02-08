@@ -25,10 +25,10 @@ if __name__ == "__main__":
         # weight="size"
     )
 
-    # plot([
-    #     pux.histogram(df, title="plotly_utility.express.histogram", **common_kwargs),
-    #     px.histogram(df, title="plotly.express.histogram", **common_kwargs)
-    # ])
+    plot([
+        pux.histogram(df, title="plotly_utility.express.histogram", **common_kwargs),
+        px.histogram(df, title="plotly.express.histogram", **common_kwargs)
+    ])
 
     import pandas as pd
     df = pd.read_csv("https://storage.googleapis.com/tf-datasets/titanic/train.csv")

@@ -4,7 +4,8 @@ import warnings
 import plotly.express as px
 import plotly.graph_objs as go
 import pandas as pd
-import plotly_utility
+# import plotly_utility
+import copy
 
 
 __all__ = ["histogram", "make_histograms_with_facet_col"]
@@ -67,8 +68,12 @@ def histogram(
     """
     Precomputing histogram binning in Python, not in Javascript.
     """
-
-    args = _build_dataframe(locals())
+    local = locals()
+    if len(labels) == 0:
+        args = _build_dataframe(local)
+        args["labels"] = {}  # Prevent that labels is set automatically if marginal=="rug"
+    else:
+        args = _build_dataframe(local)
     return _histogram(args)
 
 
@@ -187,7 +192,7 @@ def _histogram(args):
         assert y.size % x.size == 0
         _n_unique_names = y.size // x.size
         x = np.tile(x, _n_unique_names)
-        bin_width = np.tile(bin_width, _n_unique_names)
+        # bin_width = np.tile(bin_width, _n_unique_names)
 
     args["data_frame"][args["x"]] = x
     args["data_frame"][args["y"]] = y
@@ -195,11 +200,23 @@ def _histogram(args):
     if swap_xy:
         args["x"], args["y"] = args["y"], args["x"]
         args["orientation"] = "h"
-        args["labels"] = {"x": "count"}
-        target = "y"
+        y_axis = "x"
+        # assert "x" not in args["labels"]
+        # args["labels"].update(x="count")
+        # target = "y"
     else:
-        args["labels"] = {"y": "count"}
-        target = "x"
+        # pass
+        y_axis = "y"
+        # target = "x"
+
+    # print(args["labels"])
+
+    assert y_axis not in args["labels"]
+    if args["histnorm"] == "probability density":
+        y_label = "density"
+    else:
+        y_label = "count"
+    args["labels"].update({y_axis: y_label})
 
     fig = px._core.make_figure(
         args=args,
@@ -301,5 +318,5 @@ def _make_histograms_with_facet_col(args):
         args["data_frame"] = df[np.isin(df[args["facet_col"]], sep_at_page)]
         args["facet_col_wrap"] = int(np.ceil(np.sqrt(len(sep_at_page))))
         args["category_orders"] = {"facet_col": sep_at_page.tolist()}
-        yield _histogram(args)
+        yield _histogram(copy.deepcopy(args))
 
