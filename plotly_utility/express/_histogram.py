@@ -16,7 +16,10 @@ possible_marginal_types = ["", "rug", "box", "violin", "histogram"]
 
 def _build_dataframe(args):
     if args["weight"] is not None:
-        weight = args["data_frame"][args["weight"]]
+        if isinstance(args["weight"], str):
+            weight = args["data_frame"][args["weight"]]
+        elif npu.is_array(args["weight"]):
+            weight = args["weight"]
         args = px._core.build_dataframe(args, go.Histogram)
         assert "weight" not in args["data_frame"].columns
         args["data_frame"]["weight"] = weight
@@ -90,6 +93,9 @@ def _histogram(args):
         density = False
     elif args["histnorm"] == "probability density":
         density = True
+    elif args["histnorm"] == "probability":
+        density = False
+
     else:
         raise NotImplementedError(f"histnorm={args['histnorm']} not supported yet")
 
@@ -201,21 +207,18 @@ def _histogram(args):
         args["x"], args["y"] = args["y"], args["x"]
         args["orientation"] = "h"
         y_axis = "x"
-        # assert "x" not in args["labels"]
-        # args["labels"].update(x="count")
-        # target = "y"
     else:
-        # pass
         y_axis = "y"
-        # target = "x"
-
-    # print(args["labels"])
 
     assert y_axis not in args["labels"]
     if args["histnorm"] == "probability density":
         y_label = "density"
+    elif args["histnorm"] == "probability":
+        y_label = "probability"
+        args["data_frame"][args["y"]] /= args["data_frame"][args["y"]].sum()
     else:
         y_label = "count"
+
     args["labels"].update({y_axis: y_label})
 
     fig = px._core.make_figure(
