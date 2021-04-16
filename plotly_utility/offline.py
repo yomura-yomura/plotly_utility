@@ -6,6 +6,7 @@ import os
 import webbrowser
 import re
 import functools
+import warnings
 
 
 __all__ = ["figures_to_html", "plot"]
@@ -75,6 +76,10 @@ def _write_figs_to(dashboard, figs):
         elif fig == {}:
             pass
         else:
+            if fig.layout.width is not None or fig.layout.height is not None:
+                warnings.warn("not supported yet if fig.layout.width or fig.layout.height has value")
+                fig.layout.width = fig.layout.height = None
+
             inner_html = plotly.offline.plot(
                 fig, include_plotlyjs=add_js, output_type='div', config=DEFAULT_CHART_CONFIG
             )
@@ -95,31 +100,33 @@ def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=Tr
     if filename is None or filename == "":
         filename = "temp-plot.html"
 
-    dashboard = open(filename, 'w')
-    head = '''    
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    width = "device-width"
+
+    head = f'''    
+<meta name="viewport" content="width={width}, initial-scale=1, shrink-to-fit=yes">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
     '''
     scripts = '''
-    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>    
+<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>    
     '''
 
+    dashboard = open(filename, 'w')
     dashboard.write(f'''
-    <html>
-        <head>{head}</head>
-        <body>
-            <div class="container-fluid">
+<html>
+    <head>{head}</head>
+    <body>
+        <div class="container-fluid">
     ''')
 
     _write_figs_to(dashboard, figs)
 
     dashboard.write(f'''
-            </div>
-            {scripts}
-        </body>
-    </html>
+        </div>
+        {scripts}
+    </body>
+</html>
     ''')
 
     if auto_open:

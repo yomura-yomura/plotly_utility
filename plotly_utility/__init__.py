@@ -24,28 +24,44 @@ def get_row_col(fig, xaxis, yaxis):
 def get_traces_at(fig: go.Figure, row=1, col=1):
     if fig._grid_ref is None:
         assert row is None and col is None
-        x_anchors = ["x"]
-        y_anchors = ["y"]
+        return list(fig.data)
     else:
-        gr = np.array(fig._grid_ref)
-        n_row, n_col, n_data, *_ = gr.shape
+        grid_refs = np.array(
+            [[list(c) for c in r] for r in fig._grid_ref],
+            dtype=[("subplot_type", "U10"), ("layout_keys", object), ("trace_kwargs", object)]
+        )
+        n_row, n_col, n_data = grid_refs.shape
         if row == "all":
             row = np.arange(n_row) + 1
         if col == "all":
             col = np.arange(n_col) + 1
 
-        trace_kwargs = gr[row-1][col-1][..., -1].flatten()
-        x_anchors = [tk["xaxis"] for tk in trace_kwargs]
-        y_anchors = [tk["yaxis"] for tk in trace_kwargs]
+        assert np.isin(grid_refs["subplot_type"], ("xy", "scene")).all()
 
-    return [
-        trace for trace in fig.data
-        if (
-            trace.xaxis in x_anchors if trace.xaxis is not None else "x" in x_anchors
-        ) and (
-            trace.yaxis in y_anchors if trace.yaxis is not None else "y" in y_anchors
-        )
-    ]
+        x_anchors = [
+            gr["trace_kwargs"]["xaxis"] for gr in grid_refs[row-1][col-1] if gr["subplot_type"] == "xy"
+        ]
+        y_anchors = [
+            gr["trace_kwargs"]["yaxis"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "xy"
+        ]
+        scene_anchors = [
+            gr["trace_kwargs"]["scene"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "scene"
+        ]
+
+        return [
+            trace for trace in fig.data
+            if (
+                (
+                    hasattr(trace, "xaxis") and
+                    hasattr(trace, "yaxis") and
+                    trace.xaxis in x_anchors and
+                    trace.yaxis in y_anchors
+                ) or (
+                    hasattr(trace, "scene") and
+                    trace.scene in scene_anchors
+                )
+            )
+        ]
 
 
 def add_secondary_axis(fig: go.Figure, row=1, col=1, i_data=1, anchor="x",

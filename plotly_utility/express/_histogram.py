@@ -201,15 +201,8 @@ def _histogram(args):
         args["x"], args["y"] = args["y"], args["x"]
         args["orientation"] = "h"
         y_axis = "x"
-        # assert "x" not in args["labels"]
-        # args["labels"].update(x="count")
-        # target = "y"
     else:
-        # pass
         y_axis = "y"
-        # target = "x"
-
-    # print(args["labels"])
 
     assert y_axis not in args["labels"]
     if args["histnorm"] == "probability density":
