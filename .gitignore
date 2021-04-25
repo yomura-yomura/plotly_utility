@@ -1,0 +1,4 @@
+.idea/
+plotly_utility/__pycache__/
+plotly_utility/express/__pycache__/
+plotly_utility/graph_objects/__pycache__/
