@@ -66,7 +66,8 @@ def histogram(
     height=None,
 
     weight=None,
-    as_qualitative=False
+    as_qualitative=False,
+    log_bin_x=False
 ):
     """
     Precomputing histogram binning in Python, not in Javascript.
@@ -77,10 +78,10 @@ def histogram(
         args["labels"] = {}  # Prevent that labels is set automatically if marginal=="rug"
     else:
         args = _build_dataframe(local)
-    return _histogram(args)
+    return _histogram(args, log_bin_x)
 
 
-def _histogram(args):
+def _histogram(args, log_bin_x):
     if args["marginal"] is None:
         pass
     elif args["marginal"] not in possible_marginal_types:
@@ -146,7 +147,7 @@ def _histogram(args):
             """)
         data = x_converted
 
-    bins = npu.histogram_bin_edges(data, bins=bins, weights=weight)
+    bins = npu.histogram_bin_edges(data, bins=bins, weights=weight, log=log_bin_x)
     bin_width = npu.histogram_bin_widths(bins)
     x = npu.histogram_bin_centers(bins)
 

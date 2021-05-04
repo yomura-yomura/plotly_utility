@@ -18,7 +18,13 @@ def get_row_col(fig, xaxis, yaxis):
     matched = np.argwhere(np.all(table == (xaxis, yaxis), axis=-1))
     if len(matched) == 0:
         raise ValueError(f"xaxis '{xaxis}' and yaxis '{yaxis}' not found.")
-    return matched[0] + 1
+    ret = (matched[0] + 1).tolist()
+    if len(ret) == 1:
+        return [1, ret[0]]
+    elif len(ret) == 2:
+        return ret
+    else:
+        raise NotImplementedError
 
 
 def get_traces_at(fig: go.Figure, row=1, col=1):
