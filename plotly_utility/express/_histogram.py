@@ -90,16 +90,6 @@ def _histogram(args, log_bin_x):
     Possible marginal: {", ".join(possible_marginal_types)}
         """)
 
-    if args["histnorm"] is None or args["histnorm"] == "":
-        density = False
-    elif args["histnorm"] == "probability density":
-        density = True
-    elif args["histnorm"] == "probability":
-        density = False
-
-    else:
-        raise NotImplementedError(f"histnorm={args['histnorm']} not supported yet")
-
     if args["nbins"] is None:
         bins = "auto"
     else:
@@ -155,6 +145,17 @@ def _histogram(args, log_bin_x):
         return px.bar()
 
     use_one_plot = (args["color"] is None) and (args["facet_row"] is None) and (args["facet_col"] is None)
+
+    if args["histnorm"] is None or args["histnorm"] == "":
+        density = False
+    elif args["histnorm"] == "probability density":
+        density = True
+    elif args["histnorm"] == "probability":
+        density = False
+    elif args["histnorm"] == "percent":
+        density = False
+    else:
+        raise NotImplementedError(f"histnorm={args['histnorm']} not supported yet")
 
     if use_one_plot:
         y, _ = npu.histogram(data, bins=bins, density=density, weights=weight)
@@ -217,6 +218,10 @@ def _histogram(args, log_bin_x):
     elif args["histnorm"] == "probability":
         y_label = "probability"
         args["data_frame"][args["y"]] /= args["data_frame"][args["y"]].sum()
+    elif args["histnorm"] == "percent":
+        y_label = "percent"
+        args["data_frame"][args["y"]] /= args["data_frame"][args["y"]].sum()
+        args["data_frame"][args["y"]] *= 100
     else:
         y_label = "count"
 
@@ -239,16 +244,6 @@ def _histogram(args, log_bin_x):
 
     if is_category:
         fig.update_xaxes(type="category")
-
-    # for trace in fig.data:
-    #     if np.all(bin_width != 1):
-    #         if trace.yaxis == "y":  # Update Histograms
-    #             trace.update(
-    #                 hovertemplate=trace.hovertemplate.replace(f"%{{{target}}}", "%{customdata[0]} - %{customdata[1]}"),
-    #                 customdata=np.c_[x - bin_width // 2, x + bin_width // 2]
-    #             )
-    #     elif np.any(bin_width != 1):
-    #         warnings.warn("Not implemented in a variable-bin-width case. Hover-data is disabled.")
 
     has_marginal = args["marginal"] is not None and args["marginal"] != ""
     if has_marginal:

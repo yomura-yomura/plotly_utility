@@ -193,10 +193,13 @@ def to_numpy(fig, return_coords=False):
             for i in range(max_n_traces)
         ]
     data = npu.ja.apply(traces_to_numpy_array, traces, -2)
-    data = np.rec.fromarrays(np.rollaxis(data, -1),
-                             names=["facet_col", "x", "y", "error_x", "error_y"]).view(np.ma.MaskedArray)
+    data = np.rec.fromarrays(
+        np.rollaxis(data, -1),
+        names=["facet_col", "x", "y", "error_x", "error_y"]
+    ).view(np.ma.MaskedArray)
+
     data.mask = len_traces[..., np.newaxis] <= np.expand_dims(np.arange(max_n_traces), tuple(range(len_traces.ndim)))
-    data["facet_col"].mask |= data["facet_col"] == ""
+    data["facet_col"].mask |= (data["facet_col"] == "")
 
     if hasattr(fig, "_fit_results"):
         import standard_fit as sf
