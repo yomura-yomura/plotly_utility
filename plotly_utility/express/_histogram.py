@@ -68,7 +68,7 @@ def histogram(
     weight=None,
     as_qualitative=False,
     log_bin_x=False
-):
+) -> go.Figure:
     """
     Precomputing histogram binning in Python, not in Javascript.
     """

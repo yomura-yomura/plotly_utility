@@ -27,11 +27,16 @@ def get_row_col(fig, xaxis, yaxis):
         raise NotImplementedError
 
 
-def get_traces_at(fig: go.Figure, row=1, col=1):
+def get_traces_at(fig: go.Figure, row=None, col=None):
     if fig._grid_ref is None:
         assert row is None and col is None
         return list(fig.data)
     else:
+        if row is None:
+            row = 1
+        if col is None:
+            col = 1
+
         grid_refs = np.array(
             [[list(c) for c in r] for r in fig._grid_ref],
             dtype=[("subplot_type", "U10"), ("layout_keys", object), ("trace_kwargs", object)]
@@ -174,56 +179,67 @@ def get_data(fig, i_data=1, reverse_along_row=True):
     return x, y
 
 
-def to_numpy(fig, return_coords=False):
-    traces = [[get_traces_at(fig, ir + 1, ic + 1) for ic, _ in enumerate(r)]
-              for ir, r in enumerate(fig._grid_ref)]
+def to_numpy(fig):
+    # traces = [[get_traces_at(fig, ir + 1, ic + 1) for ic, _ in enumerate(r)]
+    #           for ir, r in enumerate(fig._grid_ref)]
+    n_rows, n_cols = (e.stop - 1 for e in fig._get_subplot_rows_columns())
+    traces_list = [get_traces_at(fig, row, col) for row, col in fig._get_subplot_coordinates()]
 
-    len_traces = npu.ja.apply(np.size, traces, -2)
+    len_traces = np.array([len(traces) for traces in traces_list])
     max_n_traces = np.max(len_traces)
 
-    def traces_to_numpy_array(traces):
-        return [
+    if n_rows == n_cols == 1:
+        titles = np.array(fig.layout.title.text) if fig.layout.title.text is not None else np.array("")
+    else:
+        titles = np.array([
+            text
+            for *_, text in sorted([
+                (annotation.x, annotation.y, annotation.text)
+                for annotation in fig.layout.annotations
+            ], key=lambda row: (1 - row[1], row[0]))
+        ])
+
+    data = np.array(
+        [
             (
-                traces[i]["hovertemplate"].split("<br>")[0].split("=")[1] if traces[i]["hovertemplate"] is not None else "",
-                traces[i].x,
-                traces[i].y,
-                traces[i].error_x.array if traces[i].error_x.array is not None else [],
-                traces[i].error_y.array if traces[i].error_y.array is not None else []
-            ) if i < len(traces) else ("", [], [], [], [])
-            for i in range(max_n_traces)
-        ]
-    data = npu.ja.apply(traces_to_numpy_array, traces, -2)
-    data = np.rec.fromarrays(
-        np.rollaxis(data, -1),
-        names=["facet_col", "x", "y", "error_x", "error_y"]
+                "",
+                tuple(traces[i].name if len(traces) > i else None for i in range(max_n_traces)),
+                tuple(traces[i].x if len(traces) > i else None for i in range(max_n_traces)),
+                tuple(traces[i].y if len(traces) > i else None for i in range(max_n_traces)),
+                tuple(traces[i].error_x.array if len(traces) > i else None for i in range(max_n_traces)),
+                tuple(traces[i].error_y.array if len(traces) > i else None for i in range(max_n_traces)),
+                row, col,
+                *(np.mean(axis["domain"]) for axis in fig.get_subplot(row, col))
+            )
+            for traces, (row, col) in zip(traces_list, fig._get_subplot_coordinates())
+        ],
+        dtype=[("facet_col", titles.dtype),
+               ("name", "U64", (max_n_traces,)),
+               ("x", "O", (max_n_traces,)),
+               ("y", "O", (max_n_traces,)),
+               ("error_x", "O", (max_n_traces,)),
+               ("error_y", "O", (max_n_traces,)),
+               ("row", "i1"), ("col", "i1"), ("domain_x", "f4"), ("domain_y", "f4")]
     ).view(np.ma.MaskedArray)
 
-    data.mask = len_traces[..., np.newaxis] <= np.expand_dims(np.arange(max_n_traces), tuple(range(len_traces.ndim)))
-    data["facet_col"].mask |= (data["facet_col"] == "")
+    order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
+    data.mask = (len_traces == 0)
+    data = data[order]
+    data["facet_col"][~data["facet_col"].mask] = titles
+    data = data.reshape((n_rows, n_cols))
 
     if hasattr(fig, "_fit_results"):
         import standard_fit as sf
-        fr = npu.from_dict({"fit_result": sf.to_numpy(fig._fit_results)})
-        if fr.shape[2] < data.shape[2]:
-            new_fr = np.ma.empty(data.shape, fr.dtype)
-            new_fr.mask = True
-            new_fr[:, :, :fr.shape[2]] = fr
-            fr = new_fr
-
-        data = npu.ma.merge_arrays((data, fr))
-
-    reverse_along_rows = True
-    if reverse_along_rows:
-        data = data[::-1]
+        # fr = npu.from_dict({"fit_result": sf.to_numpy(fig._fit_results)})
+        # if fr.shape[2] < data.shape[2]:
+        #     new_fr = np.ma.empty(data.shape, fr.dtype)
+        #     new_fr.mask = True
+        #     new_fr[:, :, :fr.shape[2]] = fr
+        #     fr = new_fr
+        #
+        # data = npu.ma.merge_arrays((data, fr))
+        fit_data = sf.to_numpy(fig._fit_results)
+        data = npu.add_new_field_to(data, ("fit_result", fit_data.dtype, (fit_data.shape[-1],)), fit_data)
 
     # data = np.swapaxes(npu.ma.from_jagged_array(npu.ma.apply(traces_to_numpy_array, traces)), -2, -1)
-
-    if return_coords:
-        coords = {
-            "row": np.arange(data.shape[0]),
-            "column": np.arange(data.shape[1]),
-            "trace": np.arange(data.shape[2])
-        }
-        return data, coords
-    else:
-        return data
+    return data
