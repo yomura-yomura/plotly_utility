@@ -1,4 +1,6 @@
 import numpy as np
+import plotly_utility
+
 import numpy_utility as npu
 import warnings
 import plotly.express as px
@@ -67,7 +69,10 @@ def histogram(
 
     weight=None,
     as_qualitative=False,
-    log_bin_x=False
+    use_different_bin_widths=False,
+    disable_xaxis_matches=False,
+    disable_yaxis_matches=False,
+    marginal_residual_plot=False
 ) -> go.Figure:
     """
     Precomputing histogram binning in Python, not in Javascript.
@@ -78,10 +83,41 @@ def histogram(
         args["labels"] = {}  # Prevent that labels is set automatically if marginal=="rug"
     else:
         args = _build_dataframe(local)
-    return _histogram(args, log_bin_x)
+    return _histogram(args)
 
 
-def _histogram(args, log_bin_x):
+def normalize(histnorm, y, bin_width):
+    if histnorm is None or histnorm == "":
+        return y
+    elif histnorm == "probability density":
+        return y / (y * bin_width).sum()
+    elif histnorm == "probability":
+        return y / y.sum()
+    elif histnorm == "percent":
+        return y / y.sum() * 100
+    elif histnorm == "density":
+        return y / bin_width
+    else:
+        assert False
+
+
+def get_y_title(histnorm):
+    if histnorm is None or histnorm == "":
+        y_title = "count"
+    elif histnorm == "probability density":
+        y_title = "probability density"
+    elif histnorm == "probability":
+        y_title = "probability"
+    elif histnorm == "percent":
+        y_title = "percent"
+    elif histnorm == "density":
+        y_title = "density"
+    else:
+        assert False
+    return y_title
+
+
+def _histogram(args):
     if args["marginal"] is None:
         pass
     elif args["marginal"] not in possible_marginal_types:
@@ -89,6 +125,9 @@ def _histogram(args, log_bin_x):
     Got invalid marginal '{args['marginal']}'.
     Possible marginal: {", ".join(possible_marginal_types)}
         """)
+
+    if args["histnorm"] not in (None, "", "probability density", "probability", "percent", "density"):
+        raise ValueError(f"unexpected value encountered: histnorm={args['histnorm']}")
 
     if args["nbins"] is None:
         bins = "auto"
@@ -110,9 +149,14 @@ def _histogram(args, log_bin_x):
     if args["as_qualitative"]:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            sort_by = np.unique(args["data_frame"].loc[:, args["x"]])
             args["data_frame"].loc[:, args["x"]] = args["data_frame"].loc[:, args["x"]].astype(str)
+            if args["x"] not in args["category_orders"]:
+                if args["x"] in args["labels"]:
+                    args["category_orders"][args["labels"][args["x"]]] = sort_by.tolist()
+                else:
+                    args["category_orders"][args["x"]] = sort_by.tolist()
 
-    # args["data_frame"] = args["data_frame"].dropna(subset=[args["x"]])
     data = args["data_frame"][args["x"]].to_numpy()
     if npu.is_numeric(data):
         is_category = False
@@ -137,73 +181,99 @@ def _histogram(args, log_bin_x):
             """)
         data = x_converted
 
-    bins = npu.histogram_bin_edges(data, bins=bins, weights=weight, log=log_bin_x)
-    bin_width = npu.histogram_bin_widths(bins)
-    x = npu.histogram_bin_centers(bins)
-
     if len(data) == 0:
         return px.bar()
 
     use_one_plot = (args["color"] is None) and (args["facet_row"] is None) and (args["facet_col"] is None)
 
-    if args["histnorm"] is None or args["histnorm"] == "":
-        density = False
-    elif args["histnorm"] == "probability density":
-        density = True
-    elif args["histnorm"] == "probability":
-        density = False
-    elif args["histnorm"] == "percent":
-        density = False
-    else:
-        raise NotImplementedError(f"histnorm={args['histnorm']} not supported yet")
+    density = False
 
     if use_one_plot:
-        y, _ = npu.histogram(data, bins=bins, density=density, weights=weight)
-        data_classes = np.array([""] * len(data))
+        assert args["use_different_bin_widths"] == np.False_  # maybe should be removed
+        y, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
+        x = npu.histogram_bin_centers(bins)
+        bin_width = npu.histogram_bin_widths(bins)
+
+        # if args["error_y_func"] is None:
+        #     error_y = None
+        # else:
+        #     error_y = args["error_y_func"](x, y)
+
         args["data_frame"] = pd.DataFrame()
+        args["data_frame"][args["x"]] = x
+        args["data_frame"][args["y"]] = y
+
+        args["data_frame"][args["y"]] = normalize(args["histnorm"], args["data_frame"][args["y"]], bin_width)
+
+        # if error_y is not None:
+        #     args["data_frame"]["error_y"] = error_y
     else:
-        groups = []
+        groups = {}
         if args["color"] is not None:
-            groups.append(args["data_frame"][args["color"]])
+            groups["color"] = np.array(args["data_frame"][args["color"]].tolist())
         if args["facet_row"] is not None:
-            groups.append(args["data_frame"][args["facet_row"]])
+            groups["facet_row"] = np.array(args["data_frame"][args["facet_row"]].tolist())
         if args["facet_col"] is not None:
-            groups.append(args["data_frame"][args["facet_col"]])
+            groups["facet_col"] = np.array(args["data_frame"][args["facet_col"]].tolist())
+        groups = npu.from_dict(groups)
 
-        data_classes = np.array(np.transpose(groups).tolist())
-        un = np.unique(data_classes, axis=0)
+        unique_groups = np.unique(groups)
 
-        y = np.array([
-            y
-            for d, w in (
-                (data[sel], weight[sel] if weight is not None else None)
-                for sel in (np.all(data_classes == n, axis=1) for n in un)
+        if args["use_different_bin_widths"] == np.True_:
+            pass
+        else:
+            bins = npu.histogram_bin_edges(data, bins=bins, weights=weight)
+
+        def iter_over_counts_centers_widths(data, bins, density, weight):
+            counts, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
+            width = npu.histogram_bin_widths(bins)
+            center = npu.histogram_bin_centers(bins)
+            assert len(counts) == len(center) == len(width)
+            return zip(counts, center, width)
+
+        tidy_data = np.array([
+            (count, center, width, ug, np.nan)
+            for ug, sel in ((ug, groups == ug) for ug in unique_groups)
+            for count, center, width in iter_over_counts_centers_widths(
+                data[sel], bins, density, weight[sel] if weight is not None else None
             )
-            for y in npu.histogram(d, bins=bins, density=density, weights=w)[0]
-        ])
+        ], dtype=[("y", "f8"), ("x", data.dtype), ("bin_width", "f8"), ("group", groups.dtype), ("error_y", "f8")])
 
-        groups = np.array([
-            name
-            for name in un
-            for _ in x
-        ]).T.tolist()
+        # if args["error_y_func"] is None:
+        #     error_y = None
+        # else:
+        #     args["error_y"] = "error_y"
+        #     error_y = args["error_y_func"](tidy_data["x"], tidy_data["y"])
+
+        for ug in np.unique(tidy_data["group"]):
+            tidy_data["y"][tidy_data["group"] == ug] = normalize(
+                args["histnorm"],
+                tidy_data["y"][tidy_data["group"] == ug],
+                tidy_data["bin_width"][tidy_data["group"] == ug],
+                # None if error_y is None else error_y[tidy_data["group"] == ug]
+            )
+            # if i_error_y is not None:
+            #     tidy_data["error_y"][tidy_data["group"] == ug] = i_error_y
+
+        bin_width = tidy_data["bin_width"]
 
         args["data_frame"] = pd.DataFrame()
+        args["data_frame"][args["x"]] = tidy_data["x"]
+        args["data_frame"][args["y"]] = tidy_data["y"]
+
+        # if not np.all(np.isnan(tidy_data["error_y"])):
+        #     # args["error_y"] = "error_y"
+        #     # args["data_frame"]["error_y"] = tidy_data["error_y"]
+        #     args["error_y"] = tidy_data["error_y"]
 
         if args["facet_col"] is not None:
-            args["data_frame"][args["facet_col"]] = groups.pop()
+            args["data_frame"][args["facet_col"]] = tidy_data["group"]["facet_col"]
         if args["facet_row"] is not None:
-            args["data_frame"][args["facet_row"]] = groups.pop()
+            args["data_frame"][args["facet_row"]] = tidy_data["group"]["facet_row"]
         if args["color"] is not None:
-            args["data_frame"][args["color"]] = groups.pop()
+            args["data_frame"][args["color"]] = tidy_data["group"]["color"]
 
-        assert y.size % x.size == 0
-        _n_unique_names = y.size // x.size
-        x = np.tile(x, _n_unique_names)
-        # bin_width = np.tile(bin_width, _n_unique_names)
-
-    args["data_frame"][args["x"]] = x
-    args["data_frame"][args["y"]] = y
+    # swap_xy after
 
     if swap_xy:
         args["x"], args["y"] = args["y"], args["x"]
@@ -213,50 +283,91 @@ def _histogram(args, log_bin_x):
         y_axis = "y"
 
     assert y_axis not in args["labels"]
-    if args["histnorm"] == "probability density":
-        y_label = "density"
-    elif args["histnorm"] == "probability":
-        y_label = "probability"
-        args["data_frame"][args["y"]] /= args["data_frame"][args["y"]].sum()
-    elif args["histnorm"] == "percent":
-        y_label = "percent"
-        args["data_frame"][args["y"]] /= args["data_frame"][args["y"]].sum()
-        args["data_frame"][args["y"]] *= 100
-    else:
-        y_label = "count"
-
+    y_label = get_y_title(args["histnorm"])
     args["labels"].update({y_axis: y_label})
+
+    if args["barmode"] == "group":
+        bargap = None
+        bin_width = None
+    else:
+        bargap = 0
+
 
     fig = px._core.make_figure(
         args=args,
         constructor=go.Bar,
         trace_patch=dict(
             textposition="auto",
-            width=bin_width // 1000 if np.issubdtype(data.dtype, np.datetime64) else bin_width,
+            # width=bin_width // 1000 if np.issubdtype(data.dtype, np.datetime64) else bin_width,
             marker_line_width=0,
             orientation=args["orientation"]
         ),
         layout_patch=dict(
             barmode=args["barmode"],
-            bargap=0
+            bargap=bargap,
+            bargroupgap=0
         )
     )
+
+    if args["disable_xaxis_matches"] == np.True_:
+        fig.update_xaxes(showticklabels=True, matches=None)
+    if args["disable_yaxis_matches"] == np.True_:
+        fig.update_yaxes(showticklabels=True, matches=None)
 
     if is_category:
         fig.update_xaxes(type="category")
 
+    # Bin Widths
+    if bin_width is not None:
+        bin_width = bin_width // 1000 if np.issubdtype(data.dtype, np.datetime64) else bin_width
+
+    if use_one_plot:
+        fig.data[0].width = bin_width
+    else:
+        if args["facet_col"] in args["labels"]:
+            args["facet_col"] = args["labels"][args["facet_col"]]
+        if args["facet_row"] in args["labels"]:
+            args["facet_row"] = args["labels"][args["facet_row"]]
+        if args["color"] in args["labels"]:
+            args["color"] = args["labels"][args["color"]]
+
+        for trace in fig.data:
+            if trace.type == "bar":
+                import re
+
+                trace_id = []
+                
+                if args["facet_col"] is not None:
+                    matched = re.findall(rf"{args['facet_col']}=(.+?)<br>", trace.hovertemplate)
+                    assert len(matched) == 1
+                    trace_id.append(matched[0])
+                if args["facet_row"] is not None:
+                    matched = re.findall(rf"{args['facet_row']}=(.+?)<br>", trace.hovertemplate)
+                    assert len(matched) == 1
+                    trace_id.append(matched[0])
+                if args["color"] is not None:
+                    matched = re.findall(rf"{args['color']}=(.+?)<br>", trace.hovertemplate)
+                    assert len(matched) == 1
+                    trace_id.append(matched[0])
+                # print(tidy_data["group"].astype(str) == tuple(trace_id))
+                if bin_width is not None:
+                    trace.width = bin_width[
+                        tidy_data["group"] == np.array(tuple(trace_id), tidy_data["group"].dtype)
+                    ].tolist()
+
+    # Marginal Plots
+
     has_marginal = args["marginal"] is not None and args["marginal"] != ""
     if has_marginal:
-        # marginal_traces = plotly_utility.get_traces_at(fig, 2, "all")
-        marginal_traces = [t for t in fig.data if t.type in possible_marginal_types]
+        marginal_traces = [trace for trace in fig.data if trace.type in possible_marginal_types]
         if use_one_plot:
             assert len(marginal_traces) == 1
             marginal_traces[0].x = data
         else:
-            assert len(marginal_traces) == len(un)
-            for trace, n in zip(marginal_traces, un):
+            assert len(marginal_traces) == len(unique_groups)
+            for trace in marginal_traces:
                 # Replace the binned marginal plots to the unbinned ones
-                trace.x = data[np.all(data_classes == n, axis=1)]
+                trace.x = data[groups["color"] == trace.name]
 
     return fig
 

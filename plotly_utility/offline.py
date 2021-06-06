@@ -51,7 +51,7 @@ def _get_n_rows_cols(figs):
     return n_rows, n_cols
 
 
-def _write_figs_to(dashboard, figs):
+def _write_figs_to(dashboard, figs, include_mathjax=False):
     n_rows, n_cols = _get_n_rows_cols(figs)
 
     if depth(figs) == 2:
@@ -68,28 +68,30 @@ def _write_figs_to(dashboard, figs):
         raise NotImplementedError
 
     dashboard.write(f'<div class="row no-gutters row-cols-{n_cols} h-{p}">')
-    add_js = True
+    include_plotly_js = True
     for fig in figs:
         dashboard.write('<div class="col">')
         if isinstance(fig, collections.abc.Sequence):
-            _write_figs_to(dashboard, fig)
+            _write_figs_to(dashboard, fig, include_mathjax)
         elif fig == {}:
             pass
         else:
-            if fig.layout.width is not None or fig.layout.height is not None:
-                warnings.warn("not supported yet if fig.layout.width or fig.layout.height has value")
-                fig.layout.width = fig.layout.height = None
+            # if fig.layout.width is not None or fig.layout.height is not None:
+            #     warnings.warn("not supported yet if fig.layout.width or fig.layout.height has value")
+            #     fig.layout.width = fig.layout.height = None
 
             inner_html = plotly.offline.plot(
-                fig, include_plotlyjs=add_js, output_type='div', config=DEFAULT_CHART_CONFIG
+                fig, include_plotlyjs=include_plotly_js, output_type='div', config=DEFAULT_CHART_CONFIG,
+                include_mathjax=include_mathjax
             )
             dashboard.write(f'{inner_html}')
         dashboard.write('</div>')
-        add_js = False
+        include_plotly_js = False
+        include_mathjax = False
     dashboard.write("</div>")
 
 
-def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=True):
+def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=True, include_mathjax=False):
     if isinstance(figs, plotly.graph_objs.Figure):
         figs = [figs]
     elif npu.is_array(figs):
@@ -120,7 +122,7 @@ def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=Tr
         <div class="container-fluid">
     ''')
 
-    _write_figs_to(dashboard, figs)
+    _write_figs_to(dashboard, figs, include_mathjax)
 
     dashboard.write(f'''
         </div>
@@ -135,7 +137,7 @@ def figures_to_html(figs, filename="temp-plot.html", auto_open=True, editable=Tr
 
 
 def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
-         hovertext_format=".2f", replace_none_titles=True):
+         hovertext_format=".2f", replace_none_titles=True, include_mathjax=False):
     if isinstance(figs, plotly.graph_objs.Figure):
         figs = [figs]
     elif npu.is_array(figs):
@@ -148,9 +150,13 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
             continue
         for trace in fig.data:
             if hovertext_format is not None and trace.hovertemplate is not None:
-                vars = npu.ja.from_jagged_array([m.split(":") for m in re.findall(r"%{([^}]+)}", trace.hovertemplate)],
-                                                horizontal_size=2)
-                float_vars = vars[[npu.is_floating(np.array(eval(f"trace.{var}", {"trace": trace}))) for var, *_ in vars]]
+                vars = npu.ja.from_jagged_array(
+                    [m.split(":") for m in re.findall(r"%{([^}]+)}", trace.hovertemplate)],
+                    horizontal_size=2
+                )
+                float_vars = vars[
+                    [npu.is_floating(np.array(eval(f"trace.{var}", {"trace": trace}))) for var, *_ in vars]
+                ]
                 trace.hovertemplate = functools.reduce(
                     lambda s, rpl: s.replace(*rpl),
                     zip(np.char.add(np.char.add("%{", npu.char.join(":", float_vars, axis=1)), "}"),
@@ -164,4 +170,4 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
                     if axis.title.text is None:
                         axis.title.text = ""
 
-    figures_to_html(figs, filename, auto_open, editable)
+    figures_to_html(figs, filename, auto_open, editable, include_mathjax)

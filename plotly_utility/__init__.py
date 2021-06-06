@@ -191,6 +191,11 @@ def to_numpy(fig):
     if n_rows == n_cols == 1:
         titles = np.array(fig.layout.title.text) if fig.layout.title.text is not None else np.array("")
     else:
+        # annotations = np.array([
+        #     (annotation.x, annotation.y, annotation.text)
+        #     for annotation in fig.layout.annotations
+        # ], dtype=[("x", "f8"), ("y", "f8"), ("text", "U64")])
+
         titles = np.array([
             text
             for *_, text in sorted([
@@ -198,6 +203,10 @@ def to_numpy(fig):
                 for annotation in fig.layout.annotations
             ], key=lambda row: (1 - row[1], row[0]))
         ])
+        titles = titles[~np.isin(titles, [
+            "count", "residual: log(Q_hat) - log(Q)",
+            # "noether"
+        ])]
 
     data = np.array(
         [
@@ -229,16 +238,9 @@ def to_numpy(fig):
     data = data.reshape((n_rows, n_cols))
 
     if hasattr(fig, "_fit_results"):
-        import standard_fit as sf
-        # fr = npu.from_dict({"fit_result": sf.to_numpy(fig._fit_results)})
-        # if fr.shape[2] < data.shape[2]:
-        #     new_fr = np.ma.empty(data.shape, fr.dtype)
-        #     new_fr.mask = True
-        #     new_fr[:, :, :fr.shape[2]] = fr
-        #     fr = new_fr
-        #
-        # data = npu.ma.merge_arrays((data, fr))
-        fit_data = sf.to_numpy(fig._fit_results)
+        # import standard_fit as sf
+        # fit_data = sf.to_numpy(fig._fit_results)
+        fit_data = npu.from_dict(fig._fit_results)
         data = npu.add_new_field_to(data, ("fit_result", fit_data.dtype, (fit_data.shape[-1],)), fit_data)
 
     # data = np.swapaxes(npu.ma.from_jagged_array(npu.ma.apply(traces_to_numpy_array, traces)), -2, -1)
