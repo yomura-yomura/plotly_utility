@@ -158,28 +158,28 @@ def _histogram(args):
                     args["category_orders"][args["x"]] = sort_by.tolist()
 
     data = args["data_frame"][args["x"]].to_numpy()
+    weight = args["data_frame"]["weight"] if "weight" in args["data_frame"] else None
+
+    if np.issubdtype(data.dtype, np.object_):
+        data = np.array(data.tolist())
+
     if npu.is_numeric(data):
         is_category = False
         sel = np.isfinite(data)
         args["data_frame"] = args["data_frame"][sel]
         data = args["data_frame"][args["x"]].to_numpy()
+    elif np.issubdtype(data.dtype, np.datetime64):
+        is_category = False
+        x_converted = data.astype("M8[us]")
+    #     if x_converted.size != data.size:
+    #         warnings.warn(f"""
+    # histogram does not draw accurately using datetime objects with more precise unit than [us]:
+    #     the maximum number of bins: {len(np.unique(data))} -> {len(np.unique(x_converted))}
+    # For more accurate histogram, You should use px.histogram or lose the precise somehow.
+    #         """)
+        data = x_converted
     else:
         is_category = True
-
-    if np.issubdtype(data.dtype, np.object_):
-        data = np.array(data.tolist())
-
-    weight = args["data_frame"]["weight"] if "weight" in args["data_frame"] else None
-
-    if np.issubdtype(data.dtype, np.datetime64):
-        x_converted = data.astype("M8[us]")
-        if x_converted.size != data.size:
-            warnings.warn(f"""
-    histogram does not draw accurately using datetime objects with more precise unit than [us]:
-        the maximum number of bins: {len(np.unique(data))} -> {len(np.unique(x_converted))}
-    For more accurate histogram, You should use px.histogram or lose the precise somehow.
-            """)
-        data = x_converted
 
     if len(data) == 0:
         return px.bar()
@@ -191,6 +191,7 @@ def _histogram(args):
     if use_one_plot:
         assert args["use_different_bin_widths"] == np.False_  # maybe should be removed
         y, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
+
         x = npu.histogram_bin_centers(bins)
         bin_width = npu.histogram_bin_widths(bins)
 
@@ -291,7 +292,6 @@ def _histogram(args):
         bin_width = None
     else:
         bargap = 0
-
 
     fig = px._core.make_figure(
         args=args,

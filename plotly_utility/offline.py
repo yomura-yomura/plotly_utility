@@ -6,7 +6,6 @@ import os
 import webbrowser
 import re
 import functools
-import warnings
 
 
 __all__ = ["figures_to_html", "plot"]
@@ -171,3 +170,19 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
                         axis.title.text = ""
 
     figures_to_html(figs, filename, auto_open, editable, include_mathjax)
+
+
+def mpl_plot(fig, width=None, height=None):
+    import io
+    import PIL
+    import matplotlib.pyplot as plt
+
+    with io.BytesIO() as fp:
+        fig.write_image(fp, format="png", width=width, height=height)
+        img_a = np.asarray(PIL.Image.open(fp))
+
+    plt.figure(figsize=(img_a.shape[1] / 700 * 6.4, img_a.shape[0] / 500 * 4.8), dpi=110)
+    plt.imshow(img_a)
+    plt.axis("off")
+    plt.subplots_adjust(bottom=0, top=1, left=0, right=1)
+    plt.show()

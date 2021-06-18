@@ -198,15 +198,16 @@ def to_numpy(fig):
 
         titles = np.array([
             text
-            for *_, text in sorted([
+            for x, y, text in sorted([
                 (annotation.x, annotation.y, annotation.text)
                 for annotation in fig.layout.annotations
             ], key=lambda row: (1 - row[1], row[0]))
+            if x != 0 and y != 0  # TODO: just exclude x/y title
         ])
-        titles = titles[~np.isin(titles, [
-            "count", "residual: log(Q_hat) - log(Q)",
-            # "noether"
-        ])]
+        # titles = titles[~np.isin(titles, [
+        #     "count", "residual: log(Q_hat) - log(Q)",
+        #     # "noether"
+        # ])]
 
     data = np.array(
         [
