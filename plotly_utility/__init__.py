@@ -179,7 +179,7 @@ def get_data(fig, i_data=1, reverse_along_row=True):
     return x, y
 
 
-def to_numpy(fig):
+def to_numpy(fig: go.Figure):
     # traces = [[get_traces_at(fig, ir + 1, ic + 1) for ic, _ in enumerate(r)]
     #           for ir, r in enumerate(fig._grid_ref)]
     n_rows, n_cols = (e.stop - 1 for e in fig._get_subplot_rows_columns())
@@ -195,15 +195,30 @@ def to_numpy(fig):
         #     (annotation.x, annotation.y, annotation.text)
         #     for annotation in fig.layout.annotations
         # ], dtype=[("x", "f8"), ("y", "f8"), ("text", "U64")])
+        # n_rows, n_cols = np.array(fig._grid_ref, "O").shape[:2]
+        rows, cols = fig._get_subplot_rows_columns()
+        title_positions = np.array([
+            [
+                (np.mean(fig.get_subplot(row, col).xaxis.domain), fig.get_subplot(row, col).yaxis.domain[1])
+                for col in cols
+            ]
+            for row in rows
+        ], dtype=[("x", "f8"), ("y", "f8")])
 
-        titles = np.array([
-            text
+        annotations = np.array([
+            (text, x, y)
             for x, y, text in sorted([
                 (annotation.x, annotation.y, annotation.text)
                 for annotation in fig.layout.annotations
             ], key=lambda row: (1 - row[1], row[0]))
-            if x != 0 and y != 0  # TODO: just exclude x/y title
-        ])
+            # if x != 0 and y != 0  # TODO: just exclude x/y title
+        ], dtype=[("text", f"S{max(len(a.text) for a in fig.layout.annotations)}"), ("x", "f8"), ("y", "f8")])
+
+        titles = np.ma.empty(title_positions.shape, dtype=annotations.dtype["text"])
+        mask = ~np.isin(title_positions, annotations[["x", "y"]])
+        titles[~mask] = annotations["text"][np.isin(annotations[["x", "y"]], title_positions)]
+        titles.mask = mask
+
         # titles = titles[~np.isin(titles, [
         #     "count", "residual: log(Q_hat) - log(Q)",
         #     # "noether"
@@ -235,8 +250,9 @@ def to_numpy(fig):
     order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
     data.mask = (len_traces == 0)
     data = data[order]
-    data["facet_col"][~data["facet_col"].mask] = titles
+    # data["facet_col"][~data["facet_col"].mask] = titles
     data = data.reshape((n_rows, n_cols))
+    data["facet_col"] = titles
 
     if hasattr(fig, "_fit_results"):
         # import standard_fit as sf
