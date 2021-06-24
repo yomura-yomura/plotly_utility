@@ -172,17 +172,36 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
     figures_to_html(figs, filename, auto_open, editable, include_mathjax)
 
 
-def mpl_plot(fig, width=None, height=None):
+def mpl_plot(fig, width=None, height=None, scale=1):
+    """
+    scale:
+        0.01 <= scale <= 100 is recommended.
+        maybe, 0.01 <= scale <= 20 is recommended for PyCharm Scientific View
+    """
     import io
     import PIL
     import matplotlib.pyplot as plt
 
-    with io.BytesIO() as fp:
-        fig.write_image(fp, format="png", width=width, height=height)
-        img_a = np.asarray(PIL.Image.open(fp))
+    maximum_size_of_dots = int((PIL.Image.MAX_IMAGE_PIXELS - 1) * scale / 100)
 
-    plt.figure(figsize=(img_a.shape[1] / 700 * 6.4, img_a.shape[0] / 500 * 4.8), dpi=110)
-    plt.imshow(img_a)
-    plt.axis("off")
-    plt.subplots_adjust(bottom=0, top=1, left=0, right=1)
-    plt.show()
+    if width is None:
+        width = plotly.io.kaleido.scope.default_width if fig.layout.width is None else fig.layout.width
+
+    if height is None:
+        height = plotly.io.kaleido.scope.default_height if fig.layout.height is None else fig.layout.height
+
+    with io.BytesIO() as fp:
+        scale = np.sqrt(maximum_size_of_dots / (width * height))
+        fig.write_image(fp, format="png", width=width, height=height, scale=scale, engine="kaleido")
+        pil = PIL.Image.open(fp)
+        dpi = np.sqrt(maximum_size_of_dots / np.prod(pil.size))
+        plt_fig = plt.figure(figsize=(pil.size[0], pil.size[1]), dpi=dpi)
+        ax = plt_fig.subplots()
+        ax.imshow(pil)
+        ax.axis("off")
+        plt_fig.subplots_adjust(bottom=0, top=1, left=0, right=1)
+        # import sys
+        # print(sys.getsizeof(fp)/1024**2)
+        plt_fig.show()
+        plt.close(plt_fig)
+

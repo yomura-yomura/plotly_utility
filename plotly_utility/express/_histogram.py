@@ -210,12 +210,12 @@ def _histogram(args):
         #     args["data_frame"]["error_y"] = error_y
     else:
         groups = {}
-        if args["color"] is not None:
-            groups["color"] = np.array(args["data_frame"][args["color"]].tolist())
-        if args["facet_row"] is not None:
-            groups["facet_row"] = np.array(args["data_frame"][args["facet_row"]].tolist())
         if args["facet_col"] is not None:
             groups["facet_col"] = np.array(args["data_frame"][args["facet_col"]].tolist())
+        if args["facet_row"] is not None:
+            groups["facet_row"] = np.array(args["data_frame"][args["facet_row"]].tolist())
+        if args["color"] is not None:
+            groups["color"] = np.array(args["data_frame"][args["color"]].tolist())
         groups = npu.from_dict(groups)
 
         unique_groups = np.unique(groups)
@@ -261,11 +261,6 @@ def _histogram(args):
         args["data_frame"] = pd.DataFrame()
         args["data_frame"][args["x"]] = tidy_data["x"]
         args["data_frame"][args["y"]] = tidy_data["y"]
-
-        # if not np.all(np.isnan(tidy_data["error_y"])):
-        #     # args["error_y"] = "error_y"
-        #     # args["data_frame"]["error_y"] = tidy_data["error_y"]
-        #     args["error_y"] = tidy_data["error_y"]
 
         if args["facet_col"] is not None:
             args["data_frame"][args["facet_col"]] = tidy_data["group"]["facet_col"]
@@ -338,19 +333,21 @@ def _histogram(args):
                 trace_id = []
                 
                 if args["facet_col"] is not None:
-                    matched = re.findall(rf"{args['facet_col']}=(.+?)<br>", trace.hovertemplate)
+                    matched = re.findall(rf"(?:\A|<br>){args['facet_col']}=(.+?)<br>", trace.hovertemplate)
                     assert len(matched) == 1
                     trace_id.append(matched[0])
                 if args["facet_row"] is not None:
-                    matched = re.findall(rf"{args['facet_row']}=(.+?)<br>", trace.hovertemplate)
+                    matched = re.findall(rf"(?:\A|<br>){args['facet_row']}=(.+?)<br>", trace.hovertemplate)
                     assert len(matched) == 1
                     trace_id.append(matched[0])
                 if args["color"] is not None:
-                    matched = re.findall(rf"{args['color']}=(.+?)<br>", trace.hovertemplate)
+                    matched = re.findall(rf"(?:\A|<br>){args['color']}=(.+?)<br>", trace.hovertemplate)
                     assert len(matched) == 1
                     trace_id.append(matched[0])
                 # print(tidy_data["group"].astype(str) == tuple(trace_id))
                 if bin_width is not None:
+                    # print(tidy_data["group"])
+                    # print(trace_id)
                     trace.width = bin_width[
                         tidy_data["group"] == np.array(tuple(trace_id), tidy_data["group"].dtype)
                     ].tolist()

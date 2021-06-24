@@ -199,7 +199,10 @@ def to_numpy(fig: go.Figure):
         rows, cols = fig._get_subplot_rows_columns()
         title_positions = np.array([
             [
-                (np.mean(fig.get_subplot(row, col).xaxis.domain), fig.get_subplot(row, col).yaxis.domain[1])
+                (
+                    npu.trunc(np.mean(fig.get_subplot(row, col).xaxis.domain), 15),
+                    npu.trunc(fig.get_subplot(row, col).yaxis.domain[1], 15)
+                )
                 for col in cols
             ]
             for row in rows
@@ -208,7 +211,7 @@ def to_numpy(fig: go.Figure):
         annotations = np.array([
             (text, x, y)
             for x, y, text in sorted([
-                (annotation.x, annotation.y, annotation.text)
+                (npu.trunc(annotation.x, 15), npu.trunc(annotation.y, 15), annotation.text)
                 for annotation in fig.layout.annotations
             ], key=lambda row: (1 - row[1], row[0]))
             # if x != 0 and y != 0  # TODO: just exclude x/y title
@@ -218,7 +221,6 @@ def to_numpy(fig: go.Figure):
         mask = ~np.isin(title_positions, annotations[["x", "y"]])
         titles[~mask] = annotations["text"][np.isin(annotations[["x", "y"]], title_positions)]
         titles.mask = mask
-
         # titles = titles[~np.isin(titles, [
         #     "count", "residual: log(Q_hat) - log(Q)",
         #     # "noether"
