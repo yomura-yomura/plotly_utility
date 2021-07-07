@@ -8,27 +8,13 @@ import plotly.graph_objs as go
 import pandas as pd
 # import plotly_utility
 import copy
+from . import _core
 
 
 __all__ = ["histogram", "make_histograms_with_facet_col"]
 
 
 possible_marginal_types = ["", "rug", "box", "violin", "histogram"]
-
-
-def _build_dataframe(args):
-    if args["weight"] is not None:
-        if isinstance(args["weight"], str):
-            weight = args["data_frame"][args["weight"]]
-        elif npu.is_array(args["weight"]):
-            weight = args["weight"]
-        args = px._core.build_dataframe(args, go.Histogram)
-        assert "weight" not in args["data_frame"].columns
-        args["data_frame"]["weight"] = weight
-    else:
-        args = px._core.build_dataframe(args, go.Histogram)
-        assert "weight" not in args["data_frame"].columns
-    return args
 
 
 def histogram(
@@ -45,10 +31,10 @@ def histogram(
     hover_data=None,
     animation_frame=None,
     animation_group=None,
-    category_orders={},
-    labels={},
+    category_orders=None,
+    labels=None,
     color_discrete_sequence=None,
-    color_discrete_map={},
+    color_discrete_map=None,
     marginal=None,
     opacity=None,
     orientation=None,
@@ -68,7 +54,7 @@ def histogram(
     height=None,
 
     weight=None,
-    as_qualitative=False,
+    as_qualitative=None,
     use_different_bin_widths=False,
     disable_xaxis_matches=False,
     disable_yaxis_matches=False,
@@ -77,12 +63,7 @@ def histogram(
     """
     Precomputing histogram binning in Python, not in Javascript.
     """
-    local = locals()
-    if len(labels) == 0:
-        args = _build_dataframe(local)
-        args["labels"] = {}  # Prevent that labels is set automatically if marginal=="rug"
-    else:
-        args = _build_dataframe(local)
+    args = _core.build_dataframe(locals(), go.Histogram)
     return _histogram(args)
 
 
@@ -126,6 +107,16 @@ def _histogram(args):
     Possible marginal: {", ".join(possible_marginal_types)}
         """)
 
+    if args["category_orders"] is None:
+        args["category_orders"] = dict()
+    else:
+        args["category_orders"] = args["category_orders"].copy()
+
+    if args["labels"] is None:
+        args["labels"] = dict()
+    else:
+        args["labels"] = args["labels"].copy()
+
     if args["histnorm"] not in (None, "", "probability density", "probability", "percent", "density"):
         raise ValueError(f"unexpected value encountered: histnorm={args['histnorm']}")
 
@@ -146,16 +137,24 @@ def _histogram(args):
     else:
         raise NotImplementedError("Not supported yet in the case x and y are not None ")
 
-    if args["as_qualitative"]:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            sort_by = np.unique(args["data_frame"].loc[:, args["x"]])
-            args["data_frame"].loc[:, args["x"]] = args["data_frame"].loc[:, args["x"]].astype(str)
-            if args["x"] not in args["category_orders"]:
-                if args["x"] in args["labels"]:
-                    args["category_orders"][args["labels"][args["x"]]] = sort_by.tolist()
+    if args["as_qualitative"] is not None:
+        if not npu.is_array(args["as_qualitative"]):
+            args["as_qualitative"] = [args["as_qualitative"]]
+
+        for label in args["as_qualitative"]:
+            if label not in args["data_frame"].columns:
+                raise ValueError(f"'{label}' specified in as_qualitative is not found in df.columns")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                sort_by = np.unique(args["data_frame"].loc[:, label]).astype(str)
+                args["data_frame"].loc[:, label] = args["data_frame"].loc[:, label].astype(str)
+                if label not in args["category_orders"]:
+                    if label in args["labels"]:
+                        label = args["labels"][label]
+                    args["category_orders"][label] = sort_by.tolist()
                 else:
-                    args["category_orders"][args["x"]] = sort_by.tolist()
+                    raise NotImplementedError(f"'{label}' must not be included in category_orders if as_qualitative == True")
 
     data = args["data_frame"][args["x"]].to_numpy()
     weight = args["data_frame"]["weight"] if "weight" in args["data_frame"] else None
@@ -195,19 +194,10 @@ def _histogram(args):
         x = npu.histogram_bin_centers(bins)
         bin_width = npu.histogram_bin_widths(bins)
 
-        # if args["error_y_func"] is None:
-        #     error_y = None
-        # else:
-        #     error_y = args["error_y_func"](x, y)
-
         args["data_frame"] = pd.DataFrame()
         args["data_frame"][args["x"]] = x
         args["data_frame"][args["y"]] = y
-
         args["data_frame"][args["y"]] = normalize(args["histnorm"], args["data_frame"][args["y"]], bin_width)
-
-        # if error_y is not None:
-        #     args["data_frame"]["error_y"] = error_y
     else:
         groups = {}
         if args["facet_col"] is not None:
@@ -240,21 +230,12 @@ def _histogram(args):
             )
         ], dtype=[("y", "f8"), ("x", data.dtype), ("bin_width", "f8"), ("group", groups.dtype), ("error_y", "f8")])
 
-        # if args["error_y_func"] is None:
-        #     error_y = None
-        # else:
-        #     args["error_y"] = "error_y"
-        #     error_y = args["error_y_func"](tidy_data["x"], tidy_data["y"])
-
         for ug in np.unique(tidy_data["group"]):
             tidy_data["y"][tidy_data["group"] == ug] = normalize(
                 args["histnorm"],
                 tidy_data["y"][tidy_data["group"] == ug],
-                tidy_data["bin_width"][tidy_data["group"] == ug],
-                # None if error_y is None else error_y[tidy_data["group"] == ug]
+                tidy_data["bin_width"][tidy_data["group"] == ug]
             )
-            # if i_error_y is not None:
-            #     tidy_data["error_y"][tidy_data["group"] == ug] = i_error_y
 
         bin_width = tidy_data["bin_width"]
 
@@ -318,6 +299,7 @@ def _histogram(args):
 
     if use_one_plot:
         fig.data[0].width = bin_width
+        fig.data[0]._x = args["data_frame"][args["x"]]
     else:
         if args["facet_col"] in args["labels"]:
             args["facet_col"] = args["labels"][args["facet_col"]]
@@ -344,13 +326,12 @@ def _histogram(args):
                     matched = re.findall(rf"(?:\A|<br>){args['color']}=(.+?)<br>", trace.hovertemplate)
                     assert len(matched) == 1
                     trace_id.append(matched[0])
-                # print(tidy_data["group"].astype(str) == tuple(trace_id))
+                key = np.array(tuple(trace_id), tidy_data["group"].dtype)
+
+                trace._x = data[groups == key]
+
                 if bin_width is not None:
-                    # print(tidy_data["group"])
-                    # print(trace_id)
-                    trace.width = bin_width[
-                        tidy_data["group"] == np.array(tuple(trace_id), tidy_data["group"].dtype)
-                    ].tolist()
+                    trace.width = bin_width[tidy_data["group"] == key].tolist()
 
     # Marginal Plots
 

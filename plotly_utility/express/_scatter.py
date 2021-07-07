@@ -2,6 +2,7 @@ import plotly.express as px
 from . import _histogram
 import plotly.graph_objs as go
 import numpy_utility as npu
+from . import _core
 
 
 __all__ = ["scatter"]
@@ -63,10 +64,14 @@ def scatter(
         )
         facet_col = _new_face_col
 
-    args = px._core.build_dataframe(locals(), go.Scatter)
+    args = _core.build_dataframe(locals(), go.Scatter)
+    return _scatter(args)
+
+
+def _scatter(args):
     fig = px._core.make_figure(args=args, constructor=go.Scatter)
 
-    if facet_col is None:
+    if args["facet_col"] is None:
         data_frame = args["data_frame"]
         x = args["x"]
         y = args["y"]
@@ -80,15 +85,15 @@ def scatter(
 
         fig.add_traces([t for t in copied_data if t.xaxis == "x" and t.yaxis == "y"])
 
-        if "histogram" in (marginal_x, marginal_y):
-            if marginal_x == "histogram":
+        if "histogram" in (args["marginal_x"], args["marginal_y"]):
+            if args["marginal_x"] == "histogram":
                 new_marginal_x_histogram = _histogram.histogram(data_frame, x=x, color=color)
                 new_marginal_x_histogram.update_traces(opacity=0.5)
                 fig.add_traces(new_marginal_x_histogram.data,
                                rows=[2] * len(new_marginal_x_histogram.data),
                                cols=[1] * len(new_marginal_x_histogram.data))
 
-            if marginal_y == "histogram":
+            if args["marginal_y"] == "histogram":
                 new_marginal_y_histogram = _histogram.histogram(data_frame, y=y, color=color)
                 new_marginal_y_histogram.update_traces(opacity=0.5)
                 fig.add_traces(new_marginal_y_histogram.data,

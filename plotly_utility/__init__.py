@@ -1,5 +1,11 @@
+import inspect
+import plotly.graph_objects as go
+import numpy as np
+import numpy_utility as npu
 from . import graph_objects
 from . import offline
+from . import subplots
+
 
 __all__ = [
     "express", "graph_objects", "offline",
@@ -7,10 +13,6 @@ __all__ = [
     "get_traces_at", "add_secondary_axis", "get_data",
     "to_numpy"
 ]
-
-import plotly.graph_objects as go
-import numpy as np
-import numpy_utility as npu
 
 
 def get_row_col(fig, xaxis, yaxis):
@@ -37,42 +39,47 @@ def get_traces_at(fig: go.Figure, row=None, col=None):
         if col is None:
             col = 1
 
-        grid_refs = np.array(
-            [[list(c) for c in r] for r in fig._grid_ref],
-            dtype=[("subplot_type", "U10"), ("layout_keys", object), ("trace_kwargs", object)]
-        )
-        n_row, n_col, n_data = grid_refs.shape
-        if row == "all":
-            row = np.arange(n_row) + 1
-        if col == "all":
-            col = np.arange(n_col) + 1
+        # n_rows = len(fig._grid_ref)
+        # n_cols = len(fig._grid_ref[0])
+        grid_ref = fig._grid_ref[row - 1][col - 1][0]
+        return list(fig.select_traces(grid_ref.trace_kwargs))
 
-        assert np.isin(grid_refs["subplot_type"], ("xy", "scene")).all()
-
-        x_anchors = [
-            gr["trace_kwargs"]["xaxis"] for gr in grid_refs[row-1][col-1] if gr["subplot_type"] == "xy"
-        ]
-        y_anchors = [
-            gr["trace_kwargs"]["yaxis"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "xy"
-        ]
-        scene_anchors = [
-            gr["trace_kwargs"]["scene"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "scene"
-        ]
-
-        return [
-            trace for trace in fig.data
-            if (
-                (
-                    hasattr(trace, "xaxis") and
-                    hasattr(trace, "yaxis") and
-                    trace.xaxis in x_anchors and
-                    trace.yaxis in y_anchors
-                ) or (
-                    hasattr(trace, "scene") and
-                    trace.scene in scene_anchors
-                )
-            )
-        ]
+        # grid_refs = np.array(
+        #     [[list(c) for c in r] for r in fig._grid_ref],
+        #     dtype=[("subplot_type", "U10"), ("layout_keys", object), ("trace_kwargs", object)]
+        # )
+        # n_row, n_col, n_data = grid_refs.shape
+        # if row == "all":
+        #     row = np.arange(n_row) + 1
+        # if col == "all":
+        #     col = np.arange(n_col) + 1
+        #
+        # assert np.isin(grid_refs["subplot_type"], ("xy", "scene")).all()
+        #
+        # x_anchors = [
+        #     gr["trace_kwargs"]["xaxis"] for gr in grid_refs[row-1][col-1] if gr["subplot_type"] == "xy"
+        # ]
+        # y_anchors = [
+        #     gr["trace_kwargs"]["yaxis"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "xy"
+        # ]
+        # scene_anchors = [
+        #     gr["trace_kwargs"]["scene"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "scene"
+        # ]
+        #
+        # return [
+        #     trace for trace in fig.data
+        #     if (
+        #         (
+        #             hasattr(trace, "xaxis") and
+        #             hasattr(trace, "yaxis") and
+        #             trace.xaxis in x_anchors and
+        #             trace.yaxis in y_anchors
+        #         ) or (
+        #             hasattr(trace, "scene") and
+        #             trace.scene in scene_anchors
+        #         )
+        #     )
+        # ]
 
 
 def add_secondary_axis(fig: go.Figure, row=1, col=1, i_data=1, anchor="x",
@@ -180,8 +187,6 @@ def get_data(fig, i_data=1, reverse_along_row=True):
 
 
 def to_numpy(fig: go.Figure):
-    # traces = [[get_traces_at(fig, ir + 1, ic + 1) for ic, _ in enumerate(r)]
-    #           for ir, r in enumerate(fig._grid_ref)]
     n_rows, n_cols = (e.stop - 1 for e in fig._get_subplot_rows_columns())
     traces_list = [get_traces_at(fig, row, col) for row, col in fig._get_subplot_coordinates()]
 
@@ -191,40 +196,7 @@ def to_numpy(fig: go.Figure):
     if n_rows == n_cols == 1:
         titles = np.array(fig.layout.title.text) if fig.layout.title.text is not None else np.array("")
     else:
-        # annotations = np.array([
-        #     (annotation.x, annotation.y, annotation.text)
-        #     for annotation in fig.layout.annotations
-        # ], dtype=[("x", "f8"), ("y", "f8"), ("text", "U64")])
-        # n_rows, n_cols = np.array(fig._grid_ref, "O").shape[:2]
-        rows, cols = fig._get_subplot_rows_columns()
-        title_positions = np.array([
-            [
-                (
-                    npu.trunc(np.mean(fig.get_subplot(row, col).xaxis.domain), 15),
-                    npu.trunc(fig.get_subplot(row, col).yaxis.domain[1], 15)
-                )
-                for col in cols
-            ]
-            for row in rows
-        ], dtype=[("x", "f8"), ("y", "f8")])
-
-        annotations = np.array([
-            (text, x, y)
-            for x, y, text in sorted([
-                (npu.trunc(annotation.x, 15), npu.trunc(annotation.y, 15), annotation.text)
-                for annotation in fig.layout.annotations
-            ], key=lambda row: (1 - row[1], row[0]))
-            # if x != 0 and y != 0  # TODO: just exclude x/y title
-        ], dtype=[("text", f"S{max(len(a.text) for a in fig.layout.annotations)}"), ("x", "f8"), ("y", "f8")])
-
-        titles = np.ma.empty(title_positions.shape, dtype=annotations.dtype["text"])
-        mask = ~np.isin(title_positions, annotations[["x", "y"]])
-        titles[~mask] = annotations["text"][np.isin(annotations[["x", "y"]], title_positions)]
-        titles.mask = mask
-        # titles = titles[~np.isin(titles, [
-        #     "count", "residual: log(Q_hat) - log(Q)",
-        #     # "noether"
-        # ])]
+        titles = subplots.get_subplot_titles(fig)["text"]
 
     data = np.array(
         [
@@ -252,15 +224,29 @@ def to_numpy(fig: go.Figure):
     order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
     data.mask = (len_traces == 0)
     data = data[order]
-    # data["facet_col"][~data["facet_col"].mask] = titles
     data = data.reshape((n_rows, n_cols))
     data["facet_col"] = titles
 
     if hasattr(fig, "_fit_results"):
-        # import standard_fit as sf
-        # fit_data = sf.to_numpy(fig._fit_results)
         fit_data = npu.from_dict(fig._fit_results)
         data = npu.add_new_field_to(data, ("fit_result", fit_data.dtype, (fit_data.shape[-1],)), fit_data)
 
-    # data = np.swapaxes(npu.ma.from_jagged_array(npu.ma.apply(traces_to_numpy_array, traces)), -2, -1)
     return data
+
+
+def for_each_row_and_col(fig, fn):
+    n_params = len(inspect.signature(fn).parameters)
+
+    for row, col in fig._get_subplot_coordinates():
+        data = get_traces_at(fig, row, col)
+        if len(data) == 0:
+            continue
+
+        if n_params == 1:
+            fn(data)
+        elif n_params == 2:
+            fn(row, col)
+        elif n_params == 3:
+            fn(row, col, data)
+        else:
+            raise ValueError("fn must take 1-3 parameters")

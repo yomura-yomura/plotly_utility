@@ -1,5 +1,8 @@
 import numpy as np
 import plotly_utility.express as pux
+import plotly
+plotly.io.renderers.default = "browser"
+
 
 if __name__ == "__main__":
     np.random.seed(0)

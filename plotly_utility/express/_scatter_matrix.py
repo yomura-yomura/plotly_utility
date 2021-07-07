@@ -7,6 +7,7 @@ import io
 import PIL
 import matplotlib.pyplot as plt
 import pandas as pd
+from . import _histogram
 
 
 __all__ = ["scatter_matrix"]
@@ -25,16 +26,19 @@ def scatter_matrix(df):
         if i_row >= i_col:
             if i_row == i_col:
                 fig.add_trace(
-                    go.Histogram(
-                        name=f"dist plot of {df.columns[i_row]}",
+                    # go.Histogram(
+                    #     name=f"dist plot of {df.columns[i_row]}",
+                    #     x=df.iloc[:, i_row],
+                    #     marker=dict(color="#636EFA")
+                    # ),
+                    _histogram.histogram(
                         x=df.iloc[:, i_row],
-                        marker=dict(color="#636EFA")
-                    ),
+                    ).update_traces(name=f"dist plot of {df.columns[i_row]}", marker=dict(color="#636EFA")).data[0],
                     row=i_row + 1, col=i_col + 1
                 )
             elif i_row > i_col:
                 fig.add_trace(
-                    go.Scatter(
+                    go.Scattergl(
                         mode="markers",
                         name=f"scatter plot of {df.columns[i_row]} vs {df.columns[i_col]}",
                         x=df.iloc[:, i_col],
@@ -78,43 +82,6 @@ def scatter_matrix(df):
                 print(f"encountered {e.__class__.__name__}: {e}", file=sys.stderr)
             plt.close()
 
-            # import colorlover as cl
-            # import plotly.express as px
-            # colors = cl.interp(px.colors.diverging.Picnic, 201)
-            # r = np.corrcoef(df.iloc[:, i_col], df.iloc[:, i_row])[0][1]
-            # i = int(100 * (1 + r))
-            # minimum_circle_radius = 0.2
-            # radius = max(np.abs(r) / 2, minimum_circle_radius)
-            # fig.add_annotation(
-            #     x=0.5, y=0.5,
-            #     xref=fig.get_subplot(i_row + 1, i_col + 1).yaxis.anchor,
-            #     yref=fig.get_subplot(i_row + 1, i_col + 1).xaxis.anchor,
-            #     text=f"{r:.2f}"[1:],
-            #     showarrow=False,
-            #     font_size=20
-            # )
-            # fig.add_shape(
-            #     type="circle",
-            #     xref=fig.get_subplot(i_row + 1, i_col + 1).yaxis.anchor,
-            #     yref=fig.get_subplot(i_row + 1, i_col + 1).xaxis.anchor,
-            #     x0=0.5 - radius, y0=0.5 - radius, x1=0.5 + radius, y1=0.5 + radius,
-            #     line_color=colors[i], fillcolor=colors[i]
-            # )
-            # fig.update_xaxes(
-            #     scaleanchor=fig.get_subplot(i_row + 1, i_col + 1).xaxis.anchor,
-            #     scaleratio=1,
-            #     constrain="domain",
-            #     range=(0, 1), showticklabels=False,
-            #     row=i_row + 1, col=i_col + 1
-            # )
-            # fig.update_yaxes(
-            #     scaleanchor=fig.get_subplot(i_row + 1, i_col + 1).yaxis.anchor,
-            #     scaleratio=1,
-            #     constrain="domain",
-            #     range=(0, 1), showticklabels=False,
-            #     row=i_row + 1, col=i_col + 1
-            # )
-
     for i in range(n_rows):
         fig.update_xaxes(
             title=df.columns[i], showticklabels=True,
@@ -124,11 +91,9 @@ def scatter_matrix(df):
             title=df.columns[i], showticklabels=True,
             row=i + 1, col=1
         )
-    # fig.layout.plot_bgcolor = "white"
-    # fig.update_xaxes(gridcolor="#c9c9c9", zerolinecolor="#c9c9c9")
-    # fig.update_yaxes(gridcolor="#c9c9c9", zerolinecolor="#c9c9c9")
 
     fig.update_traces(showlegend=False)
+    fig.update_layout(bargap=0)
 
     return fig
 
