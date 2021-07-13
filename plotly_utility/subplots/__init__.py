@@ -383,4 +383,17 @@ def hstack(fig, other_fig, fraction=0.5, horizontal_spacing=None):
     return new_fig
 
 
-
+def get_subplot_coordinates(fig, x_order="left to right", y_order="top to bottom"):
+    return (
+        (row, col)
+        for row, col, *_ in sorted(
+            (
+                (row, col, np.mean(subplot.xaxis.domain), np.mean(subplot.yaxis.domain))
+                for row, col, subplot in (
+                    (row, col, fig.get_subplot(row, col))
+                    for row, col in fig._get_subplot_coordinates()
+                )
+            ),
+            key=lambda row: (1 - row[-1], row[-2])
+        )
+    )

@@ -88,14 +88,14 @@ def _scatter(args):
         if "histogram" in (args["marginal_x"], args["marginal_y"]):
             if args["marginal_x"] == "histogram":
                 new_marginal_x_histogram = _histogram.histogram(data_frame, x=x, color=color)
-                new_marginal_x_histogram.update_traces(opacity=0.5)
+                new_marginal_x_histogram.update_traces(opacity=0.5, showlegend=False)
                 fig.add_traces(new_marginal_x_histogram.data,
                                rows=[2] * len(new_marginal_x_histogram.data),
                                cols=[1] * len(new_marginal_x_histogram.data))
 
             if args["marginal_y"] == "histogram":
                 new_marginal_y_histogram = _histogram.histogram(data_frame, y=y, color=color)
-                new_marginal_y_histogram.update_traces(opacity=0.5)
+                new_marginal_y_histogram.update_traces(opacity=0.5, showlegend=False)
                 fig.add_traces(new_marginal_y_histogram.data,
                                rows=[1] * len(new_marginal_y_histogram.data),
                                cols=[2] * len(new_marginal_y_histogram.data))

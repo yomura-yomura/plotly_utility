@@ -187,7 +187,7 @@ def get_data(fig, i_data=1, reverse_along_row=True):
 
 
 def to_numpy(fig: go.Figure):
-    n_rows, n_cols = (e.stop - 1 for e in fig._get_subplot_rows_columns())
+    n_rows, n_cols = subplots._get_subplot_shape(fig)
     traces_list = [get_traces_at(fig, row, col) for row, col in fig._get_subplot_coordinates()]
 
     len_traces = np.array([len(traces) for traces in traces_list])
@@ -229,6 +229,7 @@ def to_numpy(fig: go.Figure):
 
     if hasattr(fig, "_fit_results"):
         fit_data = npu.from_dict(fig._fit_results)
+        fit_data = fit_data.flatten()[order].reshape((n_rows, n_cols, -1))
         data = npu.add_new_field_to(data, ("fit_result", fit_data.dtype, (fit_data.shape[-1],)), fit_data)
 
     return data
