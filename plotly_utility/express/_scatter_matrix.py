@@ -131,8 +131,8 @@ def _scatter_matrix(df, filename=None):
     # plt.pause(0.001)
 
 
-import numpy as np
-from sklearn.datasets import load_iris
-iris = load_iris()
-df = pd.DataFrame(data=np.c_[iris['data'], iris['target']],
-                  columns= iris['feature_names'] + ['target'])
+# import numpy as np
+# from sklearn.datasets import load_iris
+# iris = load_iris()
+# df = pd.DataFrame(data=np.c_[iris['data'], iris['target']],
+#                   columns= iris['feature_names'] + ['target'])

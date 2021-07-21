@@ -39,47 +39,13 @@ def get_traces_at(fig: go.Figure, row=None, col=None):
         if col is None:
             col = 1
 
-        # n_rows = len(fig._grid_ref)
-        # n_cols = len(fig._grid_ref[0])
-        grid_ref = fig._grid_ref[row - 1][col - 1][0]
-        return list(fig.select_traces(grid_ref.trace_kwargs))
-
-        # grid_refs = np.array(
-        #     [[list(c) for c in r] for r in fig._grid_ref],
-        #     dtype=[("subplot_type", "U10"), ("layout_keys", object), ("trace_kwargs", object)]
-        # )
-        # n_row, n_col, n_data = grid_refs.shape
-        # if row == "all":
-        #     row = np.arange(n_row) + 1
-        # if col == "all":
-        #     col = np.arange(n_col) + 1
-        #
-        # assert np.isin(grid_refs["subplot_type"], ("xy", "scene")).all()
-        #
-        # x_anchors = [
-        #     gr["trace_kwargs"]["xaxis"] for gr in grid_refs[row-1][col-1] if gr["subplot_type"] == "xy"
-        # ]
-        # y_anchors = [
-        #     gr["trace_kwargs"]["yaxis"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "xy"
-        # ]
-        # scene_anchors = [
-        #     gr["trace_kwargs"]["scene"] for gr in grid_refs[row - 1][col - 1] if gr["subplot_type"] == "scene"
-        # ]
-        #
-        # return [
-        #     trace for trace in fig.data
-        #     if (
-        #         (
-        #             hasattr(trace, "xaxis") and
-        #             hasattr(trace, "yaxis") and
-        #             trace.xaxis in x_anchors and
-        #             trace.yaxis in y_anchors
-        #         ) or (
-        #             hasattr(trace, "scene") and
-        #             trace.scene in scene_anchors
-        #         )
-        #     )
-        # ]
+        grid_ref = fig._grid_ref[row - 1][col - 1]
+        if grid_ref is None:
+            return []
+        traces = list(fig.select_traces(grid_ref[0].trace_kwargs))
+        if row == 1 and col == 1:
+            traces += list(fig.select_traces({"xaxis": None, "yaxis": None}))
+        return traces
 
 
 def add_secondary_axis(fig: go.Figure, row=1, col=1, i_data=1, anchor="x",

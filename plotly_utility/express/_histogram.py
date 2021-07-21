@@ -299,7 +299,7 @@ def _histogram(args):
 
     if use_one_plot:
         fig.data[0].width = bin_width
-        fig.data[0]._x = args["data_frame"][args["x"]]
+        fig.data[0]._x = data
     else:
         if args["facet_col"] in args["labels"]:
             args["facet_col"] = args["labels"][args["facet_col"]]
