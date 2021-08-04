@@ -201,7 +201,7 @@ def combine_subplots(fig1, fig2, side, fraction=0.5, spacing=None):
         raise ValueError("Available side: top, bottom, right or left")
 
     if side in ("top", "left"):
-        fig1, fig2 = fig1, fig2
+        fig1, fig2 = fig2, fig1
 
     fig1 = copy_figure(fig1)
     _scale_all_objects(fig1, side, fraction, spacing)
@@ -210,26 +210,31 @@ def combine_subplots(fig1, fig2, side, fraction=0.5, spacing=None):
     n_rows, n_cols = _get_subplot_shape(fig1)
 
     if side in ("top", "bottom"):
-        subplot_coordinates = fig1._get_subplot_coordinates()
-        new_subplot_coordinates = (
+        subplot_coordinates2 = fig2._get_subplot_coordinates()
+        subplot_coordinates1 = (
             (n_rows + row, col)
             for row, col in fig2._get_subplot_coordinates()
         )
         if side == "top":
-            new_subplot_coordinates, subplot_coordinates = new_subplot_coordinates, subplot_coordinates
+            subplot_coordinates2, subplot_coordinates1 = subplot_coordinates2, subplot_coordinates1
     else:
-        subplot_coordinates = fig1._get_subplot_coordinates()
-        new_subplot_coordinates = (
+        subplot_coordinates2 = fig2._get_subplot_coordinates()
+        subplot_coordinates1 = (
             (row, n_cols + col)
             for row, col in fig2._get_subplot_coordinates()
         )
         if side == "left":
-            new_subplot_coordinates, subplot_coordinates = new_subplot_coordinates, subplot_coordinates
+            subplot_coordinates2, subplot_coordinates1 = subplot_coordinates2, subplot_coordinates1
 
-    for (new_row, new_col), (row, col) in zip(new_subplot_coordinates, subplot_coordinates):
-        if fig2._grid_ref[row-1][col-1] is None:
-            continue
-        _copy_subplot_ref(fig1, fig2, new_row, new_col, row, col)
+    for (row1, col1), (row2, col2) in zip(subplot_coordinates1, subplot_coordinates2):
+        # if fig1._grid_ref[row1 - 1][col1 - 1] is None:
+        #     continue
+        _copy_subplot_ref(fig1, fig2, row1, col1, row2, col2)
+
+    # for (row2, col2), (row1, col1) in zip(subplot_coordinates2, subplot_coordinates1):
+    #     if fig2._grid_ref[row1-1][col1-1] is None:
+    #         continue
+    #     _copy_subplot_ref(fig1, fig2, row2, col2, row1, col1)
     return fig1
 
 
@@ -351,7 +356,6 @@ def add_old_trace_to_new_fig(fig, new_fig, row, col, new_row, new_col, hold_doma
 
     def old_to_new_axis_id(axis_id: str):
         axis_type = axis_id[:1]
-        # new_id = (int(axis_id[1:]) if axis_id[1:] != "" else 1) + new_max_subplot_ids[f"{axis_type}axis"] - 1
         new_id = new_subplot_axes_ids[f"{axis_type}axis"]
         if new_id == 1:
             return axis_type
@@ -360,12 +364,15 @@ def add_old_trace_to_new_fig(fig, new_fig, row, col, new_row, new_col, hold_doma
 
     for axis, new_axis in zip(subplot_ref.layout_keys, new_subplot_ref.layout_keys):
         assert axis[0] == new_axis[0]
-        # axis_dict = {k: v for k, v in fig.layout[axis].to_plotly_json().items()
-        #              if hold_domain_of is None or axis.startswith(hold_domain_of) or k not in ("domain",)}
         axis_dict = {k: v for k, v in fig.layout[axis].to_plotly_json().items() if k != "domain"}
         for k in ("anchor", "matches", "scaleanchor", "overlaying"):
             if k in axis_dict.keys():
-                axis_dict[k] = old_to_new_axis_id(axis_dict[k])
+                # print(axis_dict[k], old_to_new_axis_id(axis_dict[k]))
+                # axis_dict[k] = old_to_new_axis_id(axis_dict[k])
+                axis_type = axis_dict[k][:1]
+                axis_id = 1 if len(axis_dict[k]) == 1 else int(axis_dict[k][1:])
+                axis_dict[k] = f"{axis_type}{get_max_subplot_ids(fig)[f'{axis_type}axis'] + axis_id}"
+
         new_fig.layout[new_axis].update(axis_dict)
 
 
@@ -539,3 +546,11 @@ def copy_figure(fig):
     if hasattr(fig, "_fit_results"):
         copied._fit_results = copy.deepcopy(fig._fit_results)
     return copied
+
+
+def show_legend_once_for_legend_group(fig):
+    fig.update_traces(showlegend=False)
+    fig.update_traces(showlegend=True, selector=dict(legendgroup=None))
+    for legendgroup in set(filter(None, (trace.legendgroup for trace in fig.data))):
+        trace = next(fig.select_traces(dict(legendgroup=legendgroup)))
+        trace.showlegend = True

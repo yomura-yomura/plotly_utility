@@ -58,7 +58,8 @@ def histogram(
     use_different_bin_widths=False,
     disable_xaxis_matches=False,
     disable_yaxis_matches=False,
-    marginal_residual_plot=False
+    marginal_residual_plot=False,
+    use_log_x_bins=False
 ) -> go.Figure:
     """
     Precomputing histogram binning in Python, not in Javascript.
@@ -187,12 +188,21 @@ def _histogram(args):
 
     density = False
 
+    def iter_over_counts_centers_widths(data, bins, density, weight, use_log_bins):
+        bins = npu.histogram_bin_edges(data, bins=bins, weights=weight, log=use_log_bins)
+        counts, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
+        width = npu.histogram_bin_widths(bins)
+        center = npu.histogram_bin_centers(bins)
+        assert len(counts) == len(center) == len(width)
+        return zip(counts, center, width)
+
     if use_one_plot:
         assert args["use_different_bin_widths"] == np.False_  # maybe should be removed
-        y, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
 
-        x = npu.histogram_bin_centers(bins)
-        bin_width = npu.histogram_bin_widths(bins)
+        # y, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
+        # x = npu.histogram_bin_centers(bins)
+        # bin_width = npu.histogram_bin_widths(bins)
+        y, x, bin_width = zip(*iter_over_counts_centers_widths(data, bins, density, weight, args["use_log_x_bins"]))
 
         args["data_frame"] = pd.DataFrame()
         args["data_frame"][args["x"]] = x
@@ -213,20 +223,13 @@ def _histogram(args):
         if args["use_different_bin_widths"] == np.True_:
             pass
         else:
-            bins = npu.histogram_bin_edges(data, bins=bins, weights=weight)
-
-        def iter_over_counts_centers_widths(data, bins, density, weight):
-            counts, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
-            width = npu.histogram_bin_widths(bins)
-            center = npu.histogram_bin_centers(bins)
-            assert len(counts) == len(center) == len(width)
-            return zip(counts, center, width)
+            bins = npu.histogram_bin_edges(data, bins=bins, weights=weight, log=args["use_log_x_bins"])
 
         tidy_data = np.array([
             (count, center, width, ug, np.nan)
             for ug, sel in ((ug, groups == ug) for ug in unique_groups)
             for count, center, width in iter_over_counts_centers_widths(
-                data[sel], bins, density, weight[sel] if weight is not None else None
+                data[sel], bins, density, weight[sel] if weight is not None else None, args["use_log_x_bins"]
             )
         ], dtype=[("y", "f8"), ("x", data.dtype), ("bin_width", "f8"), ("group", groups.dtype), ("error_y", "f8")])
 
