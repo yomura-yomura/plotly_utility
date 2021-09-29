@@ -189,9 +189,13 @@ def to_numpy(fig: go.Figure):
 
     order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
     data.mask = (len_traces == 0)
+
     data = data[order]
     data = data.reshape((n_rows, n_cols))
+    # print(data["facet_col"])
+    # assert np.all(data["facet_col"].mask == titles.mask)
     data["facet_col"] = titles
+    # data.mask[titles.mask] = True
 
     if hasattr(fig, "_fit_results"):
         fit_data = npu.from_dict(fig._fit_results)

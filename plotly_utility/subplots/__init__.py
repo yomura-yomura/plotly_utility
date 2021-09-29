@@ -1,4 +1,5 @@
 import itertools
+import re
 import warnings
 
 import plotly.subplots
@@ -41,19 +42,14 @@ def _get_sorted_annotations(fig, order=["top to bottom", "left to right"]):
     return annotations
 
 
-def get_subplot_titles(fig):
-    rows, cols = fig._get_subplot_rows_columns()
-
+def get_subplot_titles(fig, mask_empty_title=True):
     annotations = _get_sorted_annotations(fig)
 
     titles = np.ma.array([
-        [
-            (*_get_subplot_title_position(fig, row, col), b"")
-            if fig.get_subplot(row, col) is not None else (np.nan, np.nan, b"")
-            for col in cols
-        ]
-        for row in rows
-    ], dtype=annotations.dtype)
+        (*_get_subplot_title_position(fig, row, col), b"")
+        if fig.get_subplot(row, col) is not None else (np.nan, np.nan, b"")
+        for row, col in get_subplot_coordinates(fig)
+    ], dtype=annotations.dtype).reshape(_get_subplot_shape(fig))
 
     titles_x = npu.trunc(titles["x"], 15)
     titles_y = npu.trunc(titles["y"], 15)
@@ -64,6 +60,9 @@ def get_subplot_titles(fig):
         (titles_x[..., np.newaxis] == annotations_x[np.newaxis, np.newaxis, :]) &
         (titles_y[..., np.newaxis] == annotations_y[np.newaxis, np.newaxis, :])
     )  # (row, col, annotation)
+
+    if mask_empty_title:
+        sel &= annotations["text"][np.newaxis, np.newaxis, :] != ""
 
     titles.mask = True
     titles[sel.any(axis=-1)] = annotations[sel.any(axis=1).any(axis=0)]
@@ -115,6 +114,9 @@ def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col):
     i_row = row - 1
     i_col = col - 1
 
+    if fig._grid_ref[i_row][i_col] is None:
+        return
+
     subplot_ref = fig._grid_ref[i_row][i_col][0]
     new_subplot_ref = plotly.subplots._init_subplot_xy(
         new_fig.layout, False, *(fig.layout[kw]["domain"] for kw in subplot_ref.layout_keys),
@@ -150,13 +152,20 @@ def _scale_all_objects(fig, side, fraction=0.5, spacing=None):
             vertical_spacing = spacing
 
         # positions old domains
-        for annotation in fig.layout.annotations:
-            if annotation.yref == "paper":
-                annotation.y = scale_y(annotation.y, fraction, vertical_spacing, side)
-        for image in fig.layout.images:
-            if image.yref == "paper":
-                image.y = scale_y(image.y, fraction, vertical_spacing, side)
-                image.sizey = scale_y(image.sizey, fraction, vertical_spacing, "top")
+        for annotation in fig.select_annotations(dict(yref="paper")):
+            annotation.y = scale_y(annotation.y, fraction, vertical_spacing, side)
+        for image in fig.select_layout_images(dict(yref="paper")):
+            image.y = scale_y(image.y, fraction, vertical_spacing, side)
+            image.sizey = scale_y(image.sizey, fraction, vertical_spacing, "top")
+        for trace in fig.data:
+            if trace.marker.colorbar is None or len(trace.marker.colorbar.to_plotly_json()) == 0:
+                continue
+            if trace.marker.colorbar.y is None:
+                trace.marker.colorbar.y = 0.5
+            if trace.marker.colorbar.len is None:
+                trace.marker.colorbar.len = 1
+            trace.marker.colorbar.y = scale_y(trace.marker.colorbar.y, fraction, vertical_spacing, side)
+            trace.marker.colorbar.len = scale_y(trace.marker.colorbar.len, fraction, vertical_spacing, "top")
 
         for row, col in fig._get_subplot_coordinates():
             subplot = fig.get_subplot(row, col)
@@ -170,13 +179,17 @@ def _scale_all_objects(fig, side, fraction=0.5, spacing=None):
             horizontal_spacing = spacing
 
         # positions old domains
-        for annotation in fig.layout.annotations:
-            if annotation.xref == "paper":
-                annotation.x = scale_x(annotation.x, fraction, horizontal_spacing, side)
-        for image in fig.layout.images:
-            if image.xref == "paper":
-                image.x = scale_x(image.x, fraction, horizontal_spacing, side)
-                image.sizex = scale_x(image.sizex, fraction, horizontal_spacing, "right")
+        for annotation in fig.select_annotations(dict(xref="paper")):
+            annotation.x = scale_x(annotation.x, fraction, horizontal_spacing, side)
+        for image in fig.select_layout_images(dict(xref="paper")):
+            image.x = scale_x(image.x, fraction, horizontal_spacing, side)
+            image.sizex = scale_x(image.sizex, fraction, horizontal_spacing, "right")
+        for trace in fig.data:
+            if trace.marker.colorbar is None or len(trace.marker.colorbar.to_plotly_json()) == 0:
+                continue
+            if trace.marker.colorbar.x is None:
+                trace.marker.colorbar.x = 1
+            trace.marker.colorbar.x = scale_x(trace.marker.colorbar.x, fraction, horizontal_spacing, side)
 
         for row, col in fig._get_subplot_coordinates():
             subplot = fig.get_subplot(row, col)
@@ -196,116 +209,127 @@ def _get_opposite_side(side):
         raise ValueError("Available side: top, bottom, right or left")
 
 
-def combine_subplots(fig1, fig2, side, fraction=0.5, spacing=None):
+def combine_subplots(new_fig, fig, side, fraction=0.5, spacing=None):
     if side not in ("top", "bottom", "right", "left"):
         raise ValueError("Available side: top, bottom, right or left")
 
     if side in ("top", "left"):
-        fig1, fig2 = fig2, fig1
+        new_fig, fig = fig, new_fig
 
-    fig1 = copy_figure(fig1)
-    _scale_all_objects(fig1, side, fraction, spacing)
-    fig2 = copy_figure(fig2)
-    _scale_all_objects(fig2, _get_opposite_side(side), fraction, spacing)
-    n_rows, n_cols = _get_subplot_shape(fig1)
+    new_fig = copy(new_fig)
+    _scale_all_objects(new_fig, side, fraction, spacing)
+    fig = copy(fig)
+    _scale_all_objects(fig, _get_opposite_side(side), fraction, spacing)
+    n_rows, n_cols = _get_subplot_shape(new_fig)
 
     if side in ("top", "bottom"):
-        subplot_coordinates2 = fig2._get_subplot_coordinates()
+        subplot_coordinates2 = fig._get_subplot_coordinates()
         subplot_coordinates1 = (
             (n_rows + row, col)
-            for row, col in fig2._get_subplot_coordinates()
+            for row, col in fig._get_subplot_coordinates()
         )
         if side == "top":
             subplot_coordinates2, subplot_coordinates1 = subplot_coordinates2, subplot_coordinates1
     else:
-        subplot_coordinates2 = fig2._get_subplot_coordinates()
+        subplot_coordinates2 = fig._get_subplot_coordinates()
         subplot_coordinates1 = (
             (row, n_cols + col)
-            for row, col in fig2._get_subplot_coordinates()
+            for row, col in fig._get_subplot_coordinates()
         )
         if side == "left":
             subplot_coordinates2, subplot_coordinates1 = subplot_coordinates2, subplot_coordinates1
 
+    new_fig_max_subplot_ids = get_max_subplot_ids(new_fig)
     for (row1, col1), (row2, col2) in zip(subplot_coordinates1, subplot_coordinates2):
-        # if fig1._grid_ref[row1 - 1][col1 - 1] is None:
-        #     continue
-        _copy_subplot_ref(fig1, fig2, row1, col1, row2, col2)
-
-    # for (row2, col2), (row1, col1) in zip(subplot_coordinates2, subplot_coordinates1):
-    #     if fig2._grid_ref[row1-1][col1-1] is None:
-    #         continue
-    #     _copy_subplot_ref(fig1, fig2, row2, col2, row1, col1)
-    return fig1
-
-
-def extend_subplot(fig: go.Figure, n_subplots, side="bottom", fraction=0.5,
-                   subplot_titles=None,
-                   vertical_spacing=None, horizontal_spacing=None):
-    n_rows, n_cols = _get_subplot_shape(fig)
+        _copy_subplot_ref(new_fig, fig, row1, col1, row2, col2)
 
     if side in ("top", "bottom"):
-        if n_subplots > n_cols:
-            raise NotImplementedError(f"{n_subplots} > {n_cols}")
-
-        if vertical_spacing is None:
-            vertical_spacing = default_total_vertical_spacing / 2
-        if horizontal_spacing is None:
-            horizontal_spacing = default_total_horizontal_spacing / n_subplots
-
-        _scale_all_objects(fig, side, fraction, vertical_spacing)
-
-        edges = np.linspace(0, 1 - horizontal_spacing * (n_subplots - 1), n_subplots + 1)
-        left_edges = edges[:-1] + np.arange(len(edges[:-1])) * horizontal_spacing
-        right_edges = edges[1:] + np.arange(len(edges[1:])) * horizontal_spacing
-        new_x_domains = zip(left_edges, right_edges)
-        new_y_domains = itertools.repeat((0, fraction - vertical_spacing / 2))
-
-        new_grid_ref_row = [
-            plotly.subplots._init_subplot_xy(fig.layout, False, x_domain, y_domain, get_max_subplot_ids(fig))
-            for x_domain, y_domain in zip(new_x_domains, new_y_domains)
-        ] + [None] * (n_cols - n_subplots)
-        fig._grid_ref.append(new_grid_ref_row)
-
-        new_rows = itertools.repeat(n_rows + 1)
-        new_cols = range(1, n_subplots + 1)
-    elif side in ("right", "left"):
-        if n_subplots > n_rows:
-            raise NotImplementedError(f"{n_subplots} > {n_rows}")
-
-        if vertical_spacing is None:
-            vertical_spacing = default_total_vertical_spacing / n_subplots
-        if horizontal_spacing is None:
-            horizontal_spacing = default_total_horizontal_spacing / 2
-
-        _scale_all_objects(fig, side, fraction, horizontal_spacing)
-
-        edges = np.linspace(0, 1 - vertical_spacing * (n_subplots - 1), n_subplots + 1)
-        left_edges = edges[:-1] + np.arange(len(edges[:-1])) * vertical_spacing
-        right_edges = edges[1:] + np.arange(len(edges[1:])) * vertical_spacing
-        new_x_domains = itertools.repeat((fraction + horizontal_spacing / 2, 1))
-        new_y_domains = zip(left_edges, right_edges)
-
-        new_grid_ref_col = [
-            plotly.subplots._init_subplot_xy(fig.layout, False, x_domain, y_domain, get_max_subplot_ids(fig))
-            for x_domain, y_domain in zip(new_x_domains, new_y_domains)
-        ] + [None] * (n_rows - n_subplots)
-        for i, new_row in enumerate(new_grid_ref_col):
-            fig._grid_ref[i].append(new_row)
-
-        new_rows = itertools.repeat(n_rows + 1)
-        new_cols = range(1, n_subplots + 1)
+        assert side == "bottom"
+        for row, col in fig._get_subplot_coordinates():
+            add_old_trace_to_new_fig(
+                fig, new_fig, new_fig_max_subplot_ids,
+                row=row, col=col,
+                new_row=n_rows + row, new_col=col
+            )
     else:
-        raise NotImplementedError(side)
+        for row, col in fig._get_subplot_coordinates():
+            add_old_trace_to_new_fig(
+                fig, new_fig, new_fig_max_subplot_ids,
+                row=row, col=col,
+                new_row=row, new_col=n_cols + col
+            )
 
-    if subplot_titles is not None:
-        for row, col, title in zip(new_rows, new_cols, subplot_titles):
-            add_subplot_title(fig, title, row, col)
+    return new_fig
 
-    def _grid_str():
-        raise NotImplementedError
-    fig._grid_str = _grid_str
 
-    return fig
+# def extend_subplot(fig: go.Figure, n_subplots, side="bottom", fraction=0.5,
+#                    subplot_titles=None,
+#                    vertical_spacing=None, horizontal_spacing=None):
+#     n_rows, n_cols = _get_subplot_shape(fig)
+#
+#     if side in ("top", "bottom"):
+#         if n_subplots > n_cols:
+#             raise NotImplementedError(f"{n_subplots} > {n_cols}")
+#
+#         if vertical_spacing is None:
+#             vertical_spacing = default_total_vertical_spacing / 2
+#         if horizontal_spacing is None:
+#             horizontal_spacing = default_total_horizontal_spacing / n_subplots
+#
+#         _scale_all_objects(fig, side, fraction, vertical_spacing)
+#
+#         edges = np.linspace(0, 1 - horizontal_spacing * (n_subplots - 1), n_subplots + 1)
+#         left_edges = edges[:-1] + np.arange(len(edges[:-1])) * horizontal_spacing
+#         right_edges = edges[1:] + np.arange(len(edges[1:])) * horizontal_spacing
+#         new_x_domains = zip(left_edges, right_edges)
+#         new_y_domains = itertools.repeat((0, fraction - vertical_spacing / 2))
+#
+#         new_grid_ref_row = [
+#             plotly.subplots._init_subplot_xy(fig.layout, False, x_domain, y_domain, get_max_subplot_ids(fig))
+#             for x_domain, y_domain in zip(new_x_domains, new_y_domains)
+#         ] + [None] * (n_cols - n_subplots)
+#         fig._grid_ref.append(new_grid_ref_row)
+#
+#         new_rows = itertools.repeat(n_rows + 1)
+#         new_cols = range(1, n_subplots + 1)
+#     elif side in ("right", "left"):
+#         if n_subplots > n_rows:
+#             raise NotImplementedError(f"{n_subplots} > {n_rows}")
+#
+#         if vertical_spacing is None:
+#             vertical_spacing = default_total_vertical_spacing / n_subplots
+#         if horizontal_spacing is None:
+#             horizontal_spacing = default_total_horizontal_spacing / 2
+#
+#         _scale_all_objects(fig, side, fraction, horizontal_spacing)
+#
+#         edges = np.linspace(0, 1 - vertical_spacing * (n_subplots - 1), n_subplots + 1)
+#         left_edges = edges[:-1] + np.arange(len(edges[:-1])) * vertical_spacing
+#         right_edges = edges[1:] + np.arange(len(edges[1:])) * vertical_spacing
+#         new_x_domains = itertools.repeat((fraction + horizontal_spacing / 2, 1))
+#         new_y_domains = zip(left_edges, right_edges)
+#
+#         new_grid_ref_col = [
+#             plotly.subplots._init_subplot_xy(fig.layout, False, x_domain, y_domain, get_max_subplot_ids(fig))
+#             for x_domain, y_domain in zip(new_x_domains, new_y_domains)
+#         ] + [None] * (n_rows - n_subplots)
+#         for i, new_row in enumerate(new_grid_ref_col):
+#             fig._grid_ref[i].append(new_row)
+#
+#         new_rows = itertools.repeat(n_rows + 1)
+#         new_cols = range(1, n_subplots + 1)
+#     else:
+#         raise NotImplementedError(side)
+#
+#     if subplot_titles is not None:
+#         for row, col, title in zip(new_rows, new_cols, subplot_titles):
+#             add_subplot_title(fig, title, row, col)
+#
+#     def _grid_str():
+#         raise NotImplementedError
+#     fig._grid_str = _grid_str
+#
+#     return fig
 
 
 def get_max_subplot_ids(fig):
@@ -319,11 +343,8 @@ def get_max_subplot_ids(fig):
     }
 
 
-def add_old_trace_to_new_fig(fig, new_fig, row, col, new_row, new_col, hold_domain_of=None):
-    assert hold_domain_of in ("x", "y", None)
-
+def add_old_trace_to_new_fig(fig, new_fig, new_fig_max_subplot_ids, row, col, new_row, new_col):
     from .. import get_traces_at
-    # new_max_subplot_ids = get_max_subplot_ids(new_fig)
 
     traces = get_traces_at(fig, row=row, col=col)
     new_fig.add_traces(
@@ -338,42 +359,57 @@ def add_old_trace_to_new_fig(fig, new_fig, row, col, new_row, new_col, hold_doma
     subplot_ref = fig._grid_ref[row-1][col-1][0]
     new_subplot_ref = new_fig._grid_ref[new_row - 1][new_col - 1][0]
 
-    new_subplot_axes_ids = {
-        k: (1 if v in ("x", "y") else int(v[1:]))
-        for k, v in new_subplot_ref.trace_kwargs.items()
-    }
-    # import pprint
-    # pprint.pprint(new_fig._grid_ref)
-    # print(new_subplot_axes_ids)
-    # print({
-    #     k: new_max_subplot_ids[k] + (1 if len(v) == 1 else int(v[1:])) - 1
-    #     for k, v in subplot_ref.trace_kwargs.items()
-    # })
-    # assert new_subplot_axes_ids == {
-    #     k: new_max_subplot_ids[k] + (1 if len(v) == 1 else int(v[1:])) - 1
-    #     for k, v in subplot_ref.trace_kwargs.items()
-    # }
-
-    def old_to_new_axis_id(axis_id: str):
-        axis_type = axis_id[:1]
-        new_id = new_subplot_axes_ids[f"{axis_type}axis"]
-        if new_id == 1:
-            return axis_type
-        else:
-            return f"{axis_type}{new_id}"
-
     for axis, new_axis in zip(subplot_ref.layout_keys, new_subplot_ref.layout_keys):
         assert axis[0] == new_axis[0]
         axis_dict = {k: v for k, v in fig.layout[axis].to_plotly_json().items() if k != "domain"}
         for k in ("anchor", "matches", "scaleanchor", "overlaying"):
             if k in axis_dict.keys():
-                # print(axis_dict[k], old_to_new_axis_id(axis_dict[k]))
-                # axis_dict[k] = old_to_new_axis_id(axis_dict[k])
                 axis_type = axis_dict[k][:1]
                 axis_id = 1 if len(axis_dict[k]) == 1 else int(axis_dict[k][1:])
-                axis_dict[k] = f"{axis_type}{get_max_subplot_ids(fig)[f'{axis_type}axis'] + axis_id}"
+                axis_dict[k] = f"{axis_type}{new_fig_max_subplot_ids[f'{axis_type}axis'] + axis_id}"
 
         new_fig.layout[new_axis].update(axis_dict)
+
+    ref_pattern = re.compile(r"^(x|y)([2-9]|[1-9][0-9]+)?( domain)?$")
+
+    matched = ref_pattern.match(subplot_ref.trace_kwargs["xaxis"])
+    target_xaxis_id = int(matched[2] if matched[2] is not None else 1)
+    matched = ref_pattern.match(subplot_ref.trace_kwargs["yaxis"])
+    target_yaxis_id = int(matched[2] if matched[2] is not None else 1)
+
+    def iter_with_new_refs(objs):
+        for obj in objs:
+            if obj.xref is None:
+                obj.xref = "x"
+            if obj.yref is None:
+                obj.yref = "y"
+
+            if (matched_xref := ref_pattern.match(obj.xref)) or ref_pattern.match(obj.yref):
+                matched_yref = ref_pattern.match(obj.yref)
+                assert matched_yref is not None
+
+                new_obj = copy(obj)
+                xaxis_id = int(matched_xref[2] if matched_xref[2] is not None else 1)
+                yaxis_id = int(matched_yref[2] if matched_yref[2] is not None else 1)
+                if (xaxis_id != target_xaxis_id) or (yaxis_id != target_yaxis_id):
+                    continue
+
+                new_obj.xref = f"x{get_max_subplot_ids(new_fig)[f'xaxis'] - get_max_subplot_ids(fig)[f'xaxis'] + xaxis_id}"
+                if matched_xref[3]:
+                    new_obj.xref += matched_xref[3]
+
+                new_obj.yref = f"y{get_max_subplot_ids(new_fig)[f'yaxis'] - get_max_subplot_ids(fig)[f'yaxis'] + yaxis_id}"
+                if matched_yref[3]:
+                    new_obj.yref += matched_yref[3]
+
+                yield new_obj
+
+    for new_image in iter_with_new_refs(fig.layout.images):
+        new_fig.add_layout_image(new_image)
+    for new_annotation in iter_with_new_refs(fig.layout.annotations):
+        new_fig.add_annotation(new_annotation)
+    for new_shape in iter_with_new_refs(fig.layout.shapes):
+        new_fig.add_shape(new_shape)
 
 
 def get_new_fit_results(new_fig, fit_results, side):
@@ -400,45 +436,30 @@ def get_new_fit_results(new_fig, fit_results, side):
 
 
 def vstack(fig, other_fig, fraction=0.5, vertical_spacing=None):
-    new_fig = copy_figure(fig)
+    new_fig = copy(fig)
     figs = [other_fig]
     assert len(figs) == 1
 
-    new_fig_shape = _get_subplot_shape(new_fig)
+    # new_fig_shape = _get_subplot_shape(new_fig)
 
     if vertical_spacing is None:
         vertical_spacing = default_total_vertical_spacing / 2
 
     for fig in figs:
-        n_rows, n_cols = _get_subplot_shape(fig)
-        # subplot_titles = get_subplot_titles(fig)
-        # assert n_rows == 1
-
         new_fig = combine_subplots(new_fig, fig, "bottom", fraction, vertical_spacing)
-
-        for i_row in range(n_rows):
-            for i_col in range(n_cols):
-                add_old_trace_to_new_fig(
-                    fig, new_fig,
-                    row=i_row + 1, col=i_col + 1,
-                    new_row=new_fig_shape[0] + i_row + 1, new_col=i_col + 1,
-                    # hold_domain_of="x"
-                )
-
-        fig = copy_figure(fig)
-        _scale_all_objects(fig, "top", fraction, vertical_spacing)
-
+        fig = copy(fig)
+        _scale_all_objects(fig, "top", 1 - fraction, vertical_spacing)
         # Images
-        for image in fig.layout.images:
-            new_image = go.layout.Image(image)
-            assert new_image.yref == "paper"
-            new_fig.add_layout_image(new_image)
+        for image in fig.select_layout_images(selector=dict(yref="paper")):
+            new_fig.add_layout_image(copy(image))
 
         # Annotations
-        for annotation in fig.layout.annotations:
-            new_annotation = go.layout.Annotation(annotation)
-            assert new_annotation.yref == "paper"
-            new_fig.add_annotation(new_annotation)
+        for annotation in fig.select_annotations(selector=dict(yref="paper")):
+            new_fig.add_annotation(copy(annotation))
+
+        # Shapes
+        for shape in fig.select_shapes(selector=dict(yref="paper")):
+            new_fig.add_shape(copy(shape))
 
         # Fit Results
         if hasattr(fig, "_fit_results"):
@@ -456,51 +477,45 @@ def vstack(fig, other_fig, fraction=0.5, vertical_spacing=None):
                 else:
                     new_fig._fit_results[fit_name] = new_fit_results
 
-    # assert all(_get_subplot_shape(new_fig) == fr.shape[:2] for fr in new_fig._fit_results.values())
-
     return new_fig
 
 
-def hstack(fig, other_fig, fraction=0.5, horizontal_spacing=None):
-    new_fig = copy_figure(fig)
-    figs = [other_fig]
-    assert len(figs) == 1
+def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None):
+    new_fig = copy(fig)
+    # figs = [other_fig]
+    figs = other_figs
+    # assert len(figs) == 1
 
-    new_fig_shape = _get_subplot_shape(new_fig)
+    # new_fig_shape = _get_subplot_shape(new_fig)
 
     if horizontal_spacing is None:
         horizontal_spacing = default_total_horizontal_spacing / 2
 
-    for fig in figs:
-        n_rows, n_cols = _get_subplot_shape(fig)
-        # subplot_titles = get_subplot_titles(fig)
-        # assert n_cols == 1
+    for i, fig in enumerate(figs):
+        # n_rows, n_cols = _get_subplot_shape(fig)
+        if i > 0:
+            fraction = (i + 1) / (i + 2)
+            horizontal_spacing = 2 * horizontal_spacing / (horizontal_spacing + 2) * fraction
 
         new_fig = combine_subplots(new_fig, fig, "right", fraction, horizontal_spacing)
 
-        for i_col in range(n_cols):
-            for i_row in range(n_rows):
-                add_old_trace_to_new_fig(
-                    fig, new_fig,
-                    row=i_row + 1, col=i_col + 1,
-                    new_row=i_row + 1, new_col=new_fig_shape[1] + i_col + 1,
-                    hold_domain_of="y"
-                )
-
-        fig = copy_figure(fig)
-        _scale_all_objects(fig, "left", fraction, horizontal_spacing)
+        fig = copy(fig)
+        _scale_all_objects(fig, "left", 1 - fraction, horizontal_spacing)
 
         # Images
-        for image in fig.layout.images:
+        for image in fig.select_layout_images(selector=dict(xref="paper")):
             new_image = go.layout.Image(image)
-            assert new_image.xref == "paper"
             new_fig.add_layout_image(new_image)
 
         # Annotations
-        for annotation in fig.layout.annotations:
+        for annotation in fig.select_annotations(selector=dict(xref="paper")):
             new_annotation = go.layout.Annotation(annotation)
-            assert new_annotation.xref == "paper"
             new_fig.add_annotation(new_annotation)
+        
+        # Shapes
+        for shape in fig.select_shapes(selector=dict(xref="paper")):
+            new_shape = go.layout.Shape(shape)
+            new_fig.add_shape(new_shape)
 
         # Fit Results
         if hasattr(fig, "_fit_results"):
@@ -517,8 +532,6 @@ def hstack(fig, other_fig, fraction=0.5, horizontal_spacing=None):
                     new_fig._fit_results[fit_name][:, -fit_results.shape[0]:] = new_fit_results[:, -fit_results.shape[0]:]
                 else:
                     new_fig._fit_results[fit_name] = new_fit_results
-
-    # assert all(_get_subplot_shape(new_fig) == fr.shape[:2] for fr in new_fig._fit_results.values())
 
     return new_fig
 
@@ -539,13 +552,22 @@ def get_subplot_coordinates(fig, x_order="left to right", y_order="top to bottom
     )
 
 
-def copy_figure(fig):
-    import copy
-    copied = go.Figure(fig)
-    copied._grid_ref = copy.deepcopy(copied._grid_ref)
-    if hasattr(fig, "_fit_results"):
-        copied._fit_results = copy.deepcopy(fig._fit_results)
-    return copied
+def copy(obj):
+    if isinstance(obj, go.Figure):
+        import copy
+        copied = go.Figure(obj)
+        copied._grid_ref = copy.deepcopy(copied._grid_ref)
+        if hasattr(obj, "_fit_results"):
+            copied._fit_results = copy.deepcopy(obj._fit_results)
+        return copied
+    elif isinstance(obj, go.layout.Annotation):
+        return go.layout.Annotation(obj)
+    elif isinstance(obj, go.layout.Shape):
+        return go.layout.Shape(obj)
+    elif isinstance(obj, go.layout.Image):
+        return go.layout.Image(obj)
+    else:
+        raise TypeError(type(obj))
 
 
 def show_legend_once_for_legend_group(fig):
@@ -554,3 +576,4 @@ def show_legend_once_for_legend_group(fig):
     for legendgroup in set(filter(None, (trace.legendgroup for trace in fig.data))):
         trace = next(fig.select_traces(dict(legendgroup=legendgroup)))
         trace.showlegend = True
+    return fig

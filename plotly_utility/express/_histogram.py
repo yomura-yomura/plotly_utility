@@ -162,7 +162,6 @@ def _histogram(args):
 
     if np.issubdtype(data.dtype, np.object_):
         data = np.array(data.tolist())
-
     if npu.is_numeric(data):
         is_category = False
         sel = np.isfinite(data)
@@ -199,15 +198,11 @@ def _histogram(args):
     if use_one_plot:
         assert args["use_different_bin_widths"] == np.False_  # maybe should be removed
 
-        # y, bins = npu.histogram(data, bins=bins, density=density, weights=weight)
-        # x = npu.histogram_bin_centers(bins)
-        # bin_width = npu.histogram_bin_widths(bins)
         y, x, bin_width = zip(*iter_over_counts_centers_widths(data, bins, density, weight, args["use_log_x_bins"]))
-
         args["data_frame"] = pd.DataFrame()
         args["data_frame"][args["x"]] = x
-        args["data_frame"][args["y"]] = y
-        args["data_frame"][args["y"]] = normalize(args["histnorm"], args["data_frame"][args["y"]], bin_width)
+        # args["data_frame"][args["y"]] = y
+        args["data_frame"][args["y"]] = normalize(args["histnorm"], np.array(y), bin_width)
     else:
         groups = {}
         if args["facet_col"] is not None:
@@ -318,7 +313,7 @@ def _histogram(args):
                 trace_id = []
                 
                 if args["facet_col"] is not None:
-                    matched = re.findall(rf"(?:\A|<br>){args['facet_col']}=(.+?)<br>", trace.hovertemplate)
+                    matched = re.findall(rf"(?:\A|<br>){re.escape(args['facet_col'])}=(.+?)<br>", trace.hovertemplate)
                     assert len(matched) == 1
                     trace_id.append(matched[0])
                 if args["facet_row"] is not None:

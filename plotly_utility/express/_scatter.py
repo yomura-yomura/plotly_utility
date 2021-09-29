@@ -82,11 +82,9 @@ def _scatter(args):
 
         # colored_traces = [trace for trace in fig.data if trace.xaxis == "xaxis" and trace.yaxis == "yaxis"]
         # color = [ct.name for ct in colored_traces]
-
-        copied_data = list(fig.data)
-        fig.data = ()
-
-        fig.add_traces([t for t in copied_data if t.xaxis == "x" and t.yaxis == "y"])
+        # print([(t.name, t.marker.color) for t in fig.data if t.xaxis == "x" and t.yaxis == "y"])
+        # copied_data = list(fig.data)
+        fig.data = tuple(t for t in fig.data if t.xaxis == "x" and t.yaxis == "y")
 
         if "histogram" in (args["marginal_x"], args["marginal_y"]):
             if args["marginal_x"] == "histogram":

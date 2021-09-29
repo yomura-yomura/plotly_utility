@@ -8,7 +8,14 @@ import numpy as np
 __all__ = ["build_dataframe"]
 
 
-def build_dataframe(args, constructor):
+def build_dataframe(args: dict, constructor):
+    if np.ma.isMaskedArray(args["data_frame"]):
+        a = args.pop("data_frame")
+        args["data_frame"] = a.data
+        args = build_dataframe(args, constructor)
+        args["data_frame"] = args["data_frame"][~npu.any(a.mask, axis="column")]
+        return args
+
     if constructor == go.Histogram:
         not_has_labels = args["labels"] is None
 
@@ -29,7 +36,9 @@ def build_dataframe(args, constructor):
             args["labels"] = None
     elif constructor in (go.Scatter, go.Scattergl):
         args = px._core.build_dataframe(args, constructor)
-        if args["category_orders"] is None or args["color"] not in args["category_orders"]:
+        if args["category_orders"] is None:
+            args["category_orders"] = dict()
+        if args["color"] is not None and args["color"] not in args["category_orders"]:
             args["category_orders"][args["color"]] = np.unique(args["data_frame"][args["color"]])
     else:
         args = px._core.build_dataframe(args, constructor)
