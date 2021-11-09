@@ -28,7 +28,7 @@ def scatter(
     error_y_minus=None,
     animation_frame=None,
     animation_group=None,
-    category_orders={},
+    category_orders=None,
     labels={},
     orientation=None,
     color_discrete_sequence=None,
@@ -57,6 +57,8 @@ def scatter(
     nbinsx=None,
     nbinsy=None
 ):
+
+
     if npu.is_array(facet_col):
         sep = ", "
         _new_face_col = sep.join(facet_col)

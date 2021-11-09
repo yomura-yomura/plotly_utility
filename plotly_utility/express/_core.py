@@ -39,7 +39,8 @@ def build_dataframe(args: dict, constructor):
         if args["category_orders"] is None:
             args["category_orders"] = dict()
         if args["color"] is not None and args["color"] not in args["category_orders"]:
-            args["category_orders"][args["color"]] = np.unique(args["data_frame"][args["color"]])
+            color, indices = np.unique(args["data_frame"][args["color"]], return_index=True)
+            args["category_orders"][args["color"]] = color[np.argsort(indices)]
     else:
         args = px._core.build_dataframe(args, constructor)
 

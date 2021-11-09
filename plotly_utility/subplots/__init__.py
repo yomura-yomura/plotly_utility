@@ -183,7 +183,7 @@ def _scale_all_objects(fig, side, fraction=0.5, spacing=None):
             annotation.x = scale_x(annotation.x, fraction, horizontal_spacing, side)
         for image in fig.select_layout_images(dict(xref="paper")):
             image.x = scale_x(image.x, fraction, horizontal_spacing, side)
-            image.sizex = scale_x(image.sizex, fraction, horizontal_spacing, "right")
+            image.sizex = scale_x(image.sizex, fraction if side in ("right", "bottom") else 1 - fraction, horizontal_spacing, "right")
         for trace in fig.data:
             if trace.marker.colorbar is None or len(trace.marker.colorbar.to_plotly_json()) == 0:
                 continue
@@ -500,7 +500,7 @@ def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None):
         new_fig = combine_subplots(new_fig, fig, "right", fraction, horizontal_spacing)
 
         fig = copy(fig)
-        _scale_all_objects(fig, "left", 1 - fraction, horizontal_spacing)
+        _scale_all_objects(fig, "left", fraction, horizontal_spacing)
 
         # Images
         for image in fig.select_layout_images(selector=dict(xref="paper")):
