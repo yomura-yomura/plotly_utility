@@ -293,7 +293,7 @@ def _histogram(args):
 
     # Bin Widths
     if bin_width is not None:
-        bin_width = bin_width // 1000 if np.issubdtype(data.dtype, np.datetime64) else bin_width
+        bin_width = np.asarray(bin_width) // 1000 if np.issubdtype(data.dtype, np.datetime64) else bin_width
 
     if use_one_plot:
         fig.data[0].width = bin_width

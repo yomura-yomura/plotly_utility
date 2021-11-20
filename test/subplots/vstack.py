@@ -2,7 +2,7 @@ import numpy as np
 import plotly
 import plotly_utility.express as pux
 import plotly_utility
-plotly.io.renderers.default = "browser"
+
 
 
 if __name__ == "__main__":

@@ -542,6 +542,8 @@ def get_subplot_coordinates(fig, x_order="left to right", y_order="top to bottom
         for row, col, *_ in sorted(
             (
                 (row, col, np.mean(subplot.xaxis.domain), np.mean(subplot.yaxis.domain))
+                if subplot is not None
+                else (row, col, np.nan, np.nan)
                 for row, col, subplot in (
                     (row, col, fig.get_subplot(row, col))
                     for row, col in fig._get_subplot_coordinates()
@@ -559,6 +561,12 @@ def copy(obj):
         copied._grid_ref = copy.deepcopy(copied._grid_ref)
         if hasattr(obj, "_fit_results"):
             copied._fit_results = copy.deepcopy(obj._fit_results)
+
+        for trace, trace_copied in zip(
+            obj.select_traces(selector=dict(type="bar")), copied.select_traces(selector=dict(type="bar"))
+        ):
+            if hasattr(trace, "_x"):
+                trace_copied._x = trace._x
         return copied
     elif isinstance(obj, go.layout.Annotation):
         return go.layout.Annotation(obj)
