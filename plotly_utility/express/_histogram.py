@@ -226,7 +226,10 @@ def _histogram(args):
             for count, center, width in iter_over_counts_centers_widths(
                 data[sel], bins, density, weight[sel] if weight is not None else None, args["use_log_x_bins"]
             )
-        ], dtype=[("y", "f8"), ("x", data.dtype), ("bin_width", "f8"), ("group", groups.dtype), ("error_y", "f8")])
+        ], dtype=[
+            ("y", "f8"), ("x", "f8" if npu.is_numeric(data) else data.dtype),
+            ("bin_width", "f8"), ("group", groups.dtype), ("error_y", "f8")
+        ])
 
         for ug in np.unique(tidy_data["group"]):
             tidy_data["y"][tidy_data["group"] == ug] = normalize(

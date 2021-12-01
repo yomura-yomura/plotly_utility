@@ -108,7 +108,7 @@ def scale_y(y, fraction, vertical_spacing, spacing_from):
         raise ValueError(spacing_from)
 
 
-def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col):
+def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col, new_fig_max_subplot_ids):
     new_i_row = new_row - 1
     new_i_col = new_col - 1
     i_row = row - 1
@@ -118,9 +118,16 @@ def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col):
         return
 
     subplot_ref = fig._grid_ref[i_row][i_col][0]
+
+    new_fig_max_subplot_ids = {
+        k: new_fig_max_subplot_ids[k] + id_ - 1
+        for k, id_ in zip(["xaxis", "yaxis"], map(lambda a: 1 if len(a) == 5 else int(a[5:]), subplot_ref.layout_keys))
+    }
+
     new_subplot_ref = plotly.subplots._init_subplot_xy(
         new_fig.layout, False, *(fig.layout[kw]["domain"] for kw in subplot_ref.layout_keys),
-        get_max_subplot_ids(new_fig)
+        # get_max_subplot_ids(new_fig)
+        new_fig_max_subplot_ids
     )
 
     n_rows, n_cols = _get_subplot_shape(new_fig)
@@ -240,9 +247,10 @@ def combine_subplots(new_fig, fig, side, fraction=0.5, spacing=None):
             subplot_coordinates2, subplot_coordinates1 = subplot_coordinates2, subplot_coordinates1
 
     new_fig_max_subplot_ids = get_max_subplot_ids(new_fig)
-    for (row1, col1), (row2, col2) in zip(subplot_coordinates1, subplot_coordinates2):
-        _copy_subplot_ref(new_fig, fig, row1, col1, row2, col2)
 
+    for (row1, col1), (row2, col2) in zip(subplot_coordinates1, subplot_coordinates2):
+        _copy_subplot_ref(new_fig, fig, row1, col1, row2, col2, new_fig_max_subplot_ids)
+    # print(new_fig.layout)
     if side in ("top", "bottom"):
         assert side == "bottom"
         for row, col in fig._get_subplot_coordinates():
@@ -343,25 +351,26 @@ def get_max_subplot_ids(fig):
     }
 
 
-def add_old_trace_to_new_fig(fig, new_fig, new_fig_max_subplot_ids, row, col, new_row, new_col):
+def add_old_trace_to_new_fig(old_fig, new_fig, new_fig_max_subplot_ids, row, col, new_row, new_col):
     from .. import get_traces_at
 
-    traces = get_traces_at(fig, row=row, col=col)
+    traces = get_traces_at(old_fig, row=row, col=col)
     new_fig.add_traces(
         traces,
         rows=[new_row] * len(traces), cols=[new_col] * len(traces)
     )
 
     # Axes
-    if fig._grid_ref[row-1][col-1] is None:
+    if old_fig._grid_ref[row - 1][col - 1] is None:
         return
 
-    subplot_ref = fig._grid_ref[row-1][col-1][0]
+    subplot_ref = old_fig._grid_ref[row - 1][col - 1][0]
     new_subplot_ref = new_fig._grid_ref[new_row - 1][new_col - 1][0]
 
     for axis, new_axis in zip(subplot_ref.layout_keys, new_subplot_ref.layout_keys):
         assert axis[0] == new_axis[0]
-        axis_dict = {k: v for k, v in fig.layout[axis].to_plotly_json().items() if k != "domain"}
+        axis_dict = {k: v for k, v in old_fig.layout[axis].to_plotly_json().items() if k != "domain"}
+
         for k in ("anchor", "matches", "scaleanchor", "overlaying"):
             if k in axis_dict.keys():
                 axis_type = axis_dict[k][:1]
@@ -394,21 +403,21 @@ def add_old_trace_to_new_fig(fig, new_fig, new_fig_max_subplot_ids, row, col, ne
                 if (xaxis_id != target_xaxis_id) or (yaxis_id != target_yaxis_id):
                     continue
 
-                new_obj.xref = f"x{get_max_subplot_ids(new_fig)[f'xaxis'] - get_max_subplot_ids(fig)[f'xaxis'] + xaxis_id}"
+                new_obj.xref = f"x{get_max_subplot_ids(new_fig)[f'xaxis'] - get_max_subplot_ids(old_fig)[f'xaxis'] + xaxis_id}"
                 if matched_xref[3]:
                     new_obj.xref += matched_xref[3]
 
-                new_obj.yref = f"y{get_max_subplot_ids(new_fig)[f'yaxis'] - get_max_subplot_ids(fig)[f'yaxis'] + yaxis_id}"
+                new_obj.yref = f"y{get_max_subplot_ids(new_fig)[f'yaxis'] - get_max_subplot_ids(old_fig)[f'yaxis'] + yaxis_id}"
                 if matched_yref[3]:
                     new_obj.yref += matched_yref[3]
 
                 yield new_obj
 
-    for new_image in iter_with_new_refs(fig.layout.images):
+    for new_image in iter_with_new_refs(old_fig.layout.images):
         new_fig.add_layout_image(new_image)
-    for new_annotation in iter_with_new_refs(fig.layout.annotations):
+    for new_annotation in iter_with_new_refs(old_fig.layout.annotations):
         new_fig.add_annotation(new_annotation)
-    for new_shape in iter_with_new_refs(fig.layout.shapes):
+    for new_shape in iter_with_new_refs(old_fig.layout.shapes):
         new_fig.add_shape(new_shape)
 
 
