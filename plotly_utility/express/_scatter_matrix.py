@@ -1,5 +1,4 @@
 import sys
-
 import plotly.subplots
 import plotly.graph_objs as go
 import itertools
@@ -7,6 +6,7 @@ import io
 import PIL
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 from . import _histogram
 
 

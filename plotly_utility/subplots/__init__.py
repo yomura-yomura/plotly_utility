@@ -48,7 +48,7 @@ def get_subplot_titles(fig, mask_empty_title=True):
     titles = np.ma.array([
         (*_get_subplot_title_position(fig, row, col), b"")
         if fig.get_subplot(row, col) is not None else (np.nan, np.nan, b"")
-        for row, col in get_subplot_coordinates(fig)
+        for row, col in get_subplot_coordinates(fig).tolist()
     ], dtype=annotations.dtype).reshape(_get_subplot_shape(fig))
 
     titles_x = npu.trunc(titles["x"], 15)
@@ -165,14 +165,15 @@ def _scale_all_objects(fig, side, fraction=0.5, spacing=None):
             image.y = scale_y(image.y, fraction, vertical_spacing, side)
             image.sizey = scale_y(image.sizey, fraction, vertical_spacing, "top")
         for trace in fig.data:
-            if trace.marker.colorbar is None or len(trace.marker.colorbar.to_plotly_json()) == 0:
-                continue
-            if trace.marker.colorbar.y is None:
-                trace.marker.colorbar.y = 0.5
-            if trace.marker.colorbar.len is None:
-                trace.marker.colorbar.len = 1
-            trace.marker.colorbar.y = scale_y(trace.marker.colorbar.y, fraction, vertical_spacing, side)
-            trace.marker.colorbar.len = scale_y(trace.marker.colorbar.len, fraction, vertical_spacing, "top")
+            if hasattr(trace.marker, "colorbar"):
+                if trace.marker.colorbar is None or len(trace.marker.colorbar.to_plotly_json()) == 0:
+                    continue
+                if trace.marker.colorbar.y is None:
+                    trace.marker.colorbar.y = 0.5
+                if trace.marker.colorbar.len is None:
+                    trace.marker.colorbar.len = 1
+                trace.marker.colorbar.y = scale_y(trace.marker.colorbar.y, fraction, vertical_spacing, side)
+                trace.marker.colorbar.len = scale_y(trace.marker.colorbar.len, fraction, vertical_spacing, "top")
 
         for row, col in fig._get_subplot_coordinates():
             subplot = fig.get_subplot(row, col)
@@ -444,20 +445,25 @@ def get_new_fit_results(new_fig, fit_results, side):
     return new_fit_results
 
 
-def vstack(fig, other_fig, fraction=0.5, vertical_spacing=None):
+def vstack(fig, *other_fig, fraction=0.5, vertical_spacing=None):
     new_fig = copy(fig)
-    figs = [other_fig]
-    assert len(figs) == 1
+    figs = other_fig
+    # assert len(figs) == 1
 
     # new_fig_shape = _get_subplot_shape(new_fig)
 
     if vertical_spacing is None:
         vertical_spacing = default_total_vertical_spacing / 2
 
-    for fig in figs:
+    for i, fig in enumerate(figs):
+        if i > 0:
+            fraction = (i + 1) / (i + 2)
+            vertical_spacing = 2 * vertical_spacing / (vertical_spacing + 2) * fraction
+            fraction = 1 - fraction
+
         new_fig = combine_subplots(new_fig, fig, "bottom", fraction, vertical_spacing)
         fig = copy(fig)
-        _scale_all_objects(fig, "top", 1 - fraction, vertical_spacing)
+        _scale_all_objects(fig, "top", fraction, vertical_spacing)
         # Images
         for image in fig.select_layout_images(selector=dict(yref="paper")):
             new_fig.add_layout_image(copy(image))
@@ -468,6 +474,7 @@ def vstack(fig, other_fig, fraction=0.5, vertical_spacing=None):
 
         # Shapes
         for shape in fig.select_shapes(selector=dict(yref="paper")):
+        # for shape in fig.select_shapes():
             new_fig.add_shape(copy(shape))
 
         # Fit Results
@@ -545,8 +552,11 @@ def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None):
     return new_fig
 
 
-def get_subplot_coordinates(fig, x_order="left to right", y_order="top to bottom"):
-    return (
+def get_subplot_coordinates(
+        fig, x_order="left to right", y_order="top to bottom", flatten=True, mask_empty_subplots=False
+):
+    n_rows, n_cols, *_ = np.array(fig._grid_ref, dtype="O").shape
+    a = np.array([
         (row, col)
         for row, col, *_ in sorted(
             (
@@ -560,7 +570,32 @@ def get_subplot_coordinates(fig, x_order="left to right", y_order="top to bottom
             ),
             key=lambda row: (1 - row[-1], row[-2])
         )
-    )
+    ], dtype=[("row", "i8"), ("col", "i8")]).reshape(n_rows, n_cols)
+
+    if x_order == "left to right":
+        pass
+    elif x_order == "right to left":
+        a = a[:, ::-1]
+    else:
+        raise ValueError(x_order)
+
+    if y_order == "top to bottom":
+        pass
+    elif y_order == "bottom to top":
+        a = a[::-1]
+    else:
+        raise ValueError(y_order)
+
+    if mask_empty_subplots:
+        a = a.view(np.ma.MaskedArray)
+        a.mask = np.array([
+            next(fig.select_traces(row=row, col=col), None) is None for row, col in a.flatten()
+        ]).reshape(a.shape)
+
+    if flatten:
+        return a.flatten()
+    else:
+        return a
 
 
 def copy(obj):
@@ -588,9 +623,48 @@ def copy(obj):
 
 
 def show_legend_once_for_legend_group(fig):
-    fig.update_traces(showlegend=False)
-    fig.update_traces(showlegend=True, selector=dict(legendgroup=None))
+    # fig.update_traces(showlegend=False)
+    # fig.update_traces(showlegend=True, selector=dict(legendgroup=None))
     for legendgroup in set(filter(None, (trace.legendgroup for trace in fig.data))):
-        trace = next(fig.select_traces(dict(legendgroup=legendgroup)))
-        trace.showlegend = True
+        data = list(
+            fig.select_traces(selector=dict(legendgroup=legendgroup, showlegend=True))
+        ) + list(
+            fig.select_traces(selector=dict(legendgroup=legendgroup, showlegend=None))
+        )
+        if len(data) == 0:
+            data = list(fig.select_traces(selector=dict(legendgroup=legendgroup, showlegend=False)))
+            if len(data) == 0:
+                return fig
+            else:
+                data[0].update(showlegend=True)
+                for trace in data[1:]:
+                    trace.update(showlegend=False)
+        else:
+            data[0].update(showlegend=True)
+            for trace in data[1:]:
+                trace.update(showlegend=False)
+        # trace = next(fig.select_traces(dict(legendgroup=legendgroup)))
+        # trace.showlegend = True
     return fig
+
+
+def update_xaxes(fig, target="inside", **kwargs):
+    a = get_subplot_coordinates(
+        fig, x_order="left to right", y_order="bottom to top",
+        flatten=False, mask_empty_subplots=True
+    )
+    sel = ~a.mask.view(("?", 2))[..., 0]
+    np.put_along_axis(sel, np.argmax(sel, axis=0)[np.newaxis], False, axis=0)
+    for row, col in a[sel]:
+        fig.update_xaxes(**kwargs, row=row, col=col)
+
+
+def update_yaxes(fig, target="inside", **kwargs):
+    a = get_subplot_coordinates(
+        fig, x_order="left to right", y_order="bottom to top",
+        flatten=False, mask_empty_subplots=True
+    )
+    sel = ~a.mask.view(("?", 2))[..., 0]
+    np.put_along_axis(sel, np.argmax(sel, axis=1)[:, np.newaxis], False, axis=1)
+    for row, col in a[sel]:
+        fig.update_yaxes(**kwargs, row=row, col=col)

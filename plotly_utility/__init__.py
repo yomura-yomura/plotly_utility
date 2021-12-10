@@ -174,7 +174,10 @@ def to_numpy(fig: go.Figure):
                 tuple(traces[i].error_x.array if len(traces) > i else None for i in range(max_n_traces)),
                 tuple(traces[i].error_y.array if len(traces) > i else None for i in range(max_n_traces)),
                 row, col,
-                *(np.mean(axis["domain"]) for axis in fig.get_subplot(row, col))
+                *(
+                    (np.mean(axis["domain"]) for axis in fig.get_subplot(row, col))
+                    if fig.get_subplot(row, col) is not None else (np.nan, np.nan)
+                )
             )
             for traces, (row, col) in zip(traces_list, fig._get_subplot_coordinates())
         ],
@@ -219,5 +222,8 @@ def for_each_row_and_col(fig, fn):
             fn(row, col)
         elif n_params == 3:
             fn(row, col, data)
+        elif n_params == 4:
+            fn(fig, row, col, data)
         else:
             raise ValueError("fn must take 1-3 parameters")
+    return fig
