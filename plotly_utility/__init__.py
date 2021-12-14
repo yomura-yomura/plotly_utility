@@ -152,7 +152,7 @@ def get_data(fig, i_data=1, reverse_along_row=True):
     return x, y
 
 
-def to_numpy(fig: go.Figure):
+def to_numpy(fig: go.Figure, flip_xy_if_any_bar_is_horizontal=True):
     n_rows, n_cols = subplots._get_subplot_shape(fig)
     traces_list = [get_traces_at(fig, row, col) for row, col in fig._get_subplot_coordinates()]
 
@@ -164,15 +164,31 @@ def to_numpy(fig: go.Figure):
     else:
         titles = subplots.get_subplot_titles(fig)["text"]
 
+    def get_point_data(traces):
+        if (
+            flip_xy_if_any_bar_is_horizontal and
+            any(trace["orientation"] == "h" for trace in traces if trace["type"] == "bar")
+        ):
+            return (
+                tuple(traces[i]["y"] if len(traces) > i else [] for i in range(max_n_traces)),
+                tuple(traces[i]["x"] if len(traces) > i else [] for i in range(max_n_traces)),
+                tuple(traces[i]["error_y"]["array"] if len(traces) > i else [] for i in range(max_n_traces)),
+                tuple(traces[i]["error_x"]["array"] if len(traces) > i else [] for i in range(max_n_traces))
+            )
+        else:
+            return (
+                tuple(traces[i]["x"] if len(traces) > i else [] for i in range(max_n_traces)),
+                tuple(traces[i]["y"] if len(traces) > i else [] for i in range(max_n_traces)),
+                tuple(traces[i]["error_x"]["array"] if len(traces) > i else [] for i in range(max_n_traces)),
+                tuple(traces[i]["error_y"]["array"] if len(traces) > i else [] for i in range(max_n_traces))
+            )
+
     data = np.array(
         [
             (
                 "",
-                tuple(traces[i].name if len(traces) > i else None for i in range(max_n_traces)),
-                tuple(traces[i].x if len(traces) > i else None for i in range(max_n_traces)),
-                tuple(traces[i].y if len(traces) > i else None for i in range(max_n_traces)),
-                tuple(traces[i].error_x.array if len(traces) > i else None for i in range(max_n_traces)),
-                tuple(traces[i].error_y.array if len(traces) > i else None for i in range(max_n_traces)),
+                tuple(traces[i]["name"] if len(traces) > i else "" for i in range(max_n_traces)),
+                *get_point_data(traces),
                 row, col,
                 *(
                     (np.mean(axis["domain"]) for axis in fig.get_subplot(row, col))
@@ -190,15 +206,12 @@ def to_numpy(fig: go.Figure):
                ("row", "i1"), ("col", "i1"), ("domain_x", "f4"), ("domain_y", "f4")]
     ).view(np.ma.MaskedArray)
 
-    order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
+    # order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
     data.mask = (len_traces == 0)
 
-    data = data[order]
+    # data = data[order]
     data = data.reshape((n_rows, n_cols))
-    # print(data["facet_col"])
-    # assert np.all(data["facet_col"].mask == titles.mask)
     data["facet_col"] = titles
-    # data.mask[titles.mask] = True
 
     if hasattr(fig, "_fit_results"):
         fit_data = npu.from_dict(fig._fit_results)

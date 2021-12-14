@@ -48,7 +48,7 @@ def get_subplot_titles(fig, mask_empty_title=True):
     titles = np.ma.array([
         (*_get_subplot_title_position(fig, row, col), b"")
         if fig.get_subplot(row, col) is not None else (np.nan, np.nan, b"")
-        for row, col in get_subplot_coordinates(fig).tolist()
+        for row, col in fig._get_subplot_coordinates()
     ], dtype=annotations.dtype).reshape(_get_subplot_shape(fig))
 
     titles_x = npu.trunc(titles["x"], 15)
@@ -151,6 +151,40 @@ def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col, new_fig_max_subp
     grid_ref_row[new_i_col] = new_subplot_ref
 
 
+def _get_subplot_domains_from_grid_ref(fig):
+    def f(subplot_refs):
+        if subplot_refs is None:
+            return np.inf, -np.inf
+        assert len(subplot_refs) == 1
+        subplot_ref = subplot_refs[0]
+        xaxis, yaxis = subplot_ref.layout_keys
+        return (
+            np.mean(fig.layout[xaxis].domain),
+            np.mean(fig.layout[yaxis].domain)
+        )
+
+    return npu.ja.apply(f, fig._grid_ref, 2).astype([("x", "f8"), ("y", "f8")])
+
+
+def _validate_grid_ref(fig):
+    subplot_domains = _get_subplot_domains_from_grid_ref(fig)
+    fig._grid_ref = [
+        [
+            fig._grid_ref[row][col]
+            for row, col in row_cols
+        ]
+        for row_cols in np.stack([
+            len(subplot_domains) - 1 - np.argsort(subplot_domains["y"][::-1], axis=0)[::-1],
+            np.argsort(subplot_domains["x"], axis=1)
+        ], axis=-1)
+    ]
+    subplot_domains = _get_subplot_domains_from_grid_ref(fig)
+    if not npu.is_sorted(subplot_domains["x"], axis=1):
+        raise RuntimeError(f"grid_ref domain x must be sorted along axis 1: \n{subplot_domains['x']}")
+    if not npu.is_sorted(subplot_domains["y"][::-1], axis=0):
+        raise RuntimeError(f"grid_ref domain y must be sorted along axis 0: \n{subplot_domains['y']}")
+
+
 def _scale_all_objects(fig, side, fraction=0.5, spacing=None):
     if side in ("top", "bottom"):
         if spacing is None:
@@ -251,6 +285,10 @@ def combine_subplots(new_fig, fig, side, fraction=0.5, spacing=None):
 
     for (row1, col1), (row2, col2) in zip(subplot_coordinates1, subplot_coordinates2):
         _copy_subplot_ref(new_fig, fig, row1, col1, row2, col2, new_fig_max_subplot_ids)
+
+    _validate_grid_ref(new_fig)
+    _validate_grid_ref(fig)
+
     # print(new_fig.layout)
     if side in ("top", "bottom"):
         assert side == "bottom"
@@ -555,23 +593,26 @@ def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None):
 def get_subplot_coordinates(
         fig, x_order="left to right", y_order="top to bottom", flatten=True, mask_empty_subplots=False
 ):
-    n_rows, n_cols, *_ = np.array(fig._grid_ref, dtype="O").shape
-    a = np.array([
-        (row, col)
-        for row, col, *_ in sorted(
-            (
-                (row, col, np.mean(subplot.xaxis.domain), np.mean(subplot.yaxis.domain))
-                if subplot is not None
-                else (row, col, np.nan, np.nan)
-                for row, col, subplot in (
-                    (row, col, fig.get_subplot(row, col))
-                    for row, col in fig._get_subplot_coordinates()
-                )
-            ),
-            key=lambda row: (1 - row[-1], row[-2])
-        )
-    ], dtype=[("row", "i8"), ("col", "i8")]).reshape(n_rows, n_cols)
-
+    a = np.array(
+        list(fig._get_subplot_coordinates()), dtype=[("row", "i8"), ("col", "i8")]
+    ).reshape(*_get_subplot_shape(fig))
+    # n_rows, n_cols, *_ = np.array(fig._grid_ref, dtype="O").shape
+    # a = np.array([
+    #     (row, col)
+    #     for row, col, *_ in sorted(
+    #         (
+    #             (row, col, np.mean(subplot.xaxis.domain), np.mean(subplot.yaxis.domain))
+    #             if subplot is not None
+    #             else (row, col, np.nan, np.nan)
+    #             for row, col, subplot in (
+    #                 (row, col, fig.get_subplot(row, col))
+    #                 for row, col in fig._get_subplot_coordinates()
+    #             )
+    #         ),
+    #         key=lambda row: (1 - row[-1], row[-2])
+    #     )
+    # ], dtype=[("row", "i8"), ("col", "i8")]).reshape(n_rows, n_cols)
+    #
     if x_order == "left to right":
         pass
     elif x_order == "right to left":
