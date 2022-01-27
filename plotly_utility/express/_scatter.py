@@ -54,10 +54,9 @@ def scatter(
     width=None,
     height=None,
 
-    nbinsx=None,
-    nbinsy=None
+    nbinsx=None, nbinsy=None,
+    use_lob_x_bins=False, use_lob_y_bins=False
 ):
-
 
     if npu.is_array(facet_col):
         sep = ", "
@@ -91,7 +90,8 @@ def _scatter(args):
         if "histogram" in (args["marginal_x"], args["marginal_y"]):
             if args["marginal_x"] == "histogram":
                 new_marginal_x_histogram = _histogram.histogram(
-                    data_frame, x=x, color=color, nbins=args["nbinsx"], category_orders=args["category_orders"]
+                    data_frame, x=x, color=color, nbins=args["nbinsx"], category_orders=args["category_orders"],
+                    use_log_x_bins=args["use_lob_x_bins"]
                 )
                 new_marginal_x_histogram.update_traces(opacity=0.5, showlegend=False)
                 fig.add_traces(new_marginal_x_histogram.data,
@@ -100,7 +100,8 @@ def _scatter(args):
 
             if args["marginal_y"] == "histogram":
                 new_marginal_y_histogram = _histogram.histogram(
-                    data_frame, y=y, color=color, nbins=args["nbinsy"], category_orders=args["category_orders"]
+                    data_frame, y=y, color=color, nbins=args["nbinsy"], category_orders=args["category_orders"],
+                    use_log_x_bins=args["use_lob_y_bins"]
                 )
                 new_marginal_y_histogram.update_traces(opacity=0.5, showlegend=False)
                 fig.add_traces(new_marginal_y_histogram.data,

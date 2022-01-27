@@ -8,6 +8,13 @@ import numpy as np
 import numpy_utility as npu
 
 
+__all__ = [
+    "hstack", "vstack",
+    "show_legend_once_for_legend_group", "show_empty_subplots",
+    "update_xaxes", "update_yaxes"
+]
+
+
 def _get_subplot_shape(fig: go.Figure):
     if not fig._has_subplots():
         raise ValueError("fig has no subplots")
@@ -57,15 +64,17 @@ def get_subplot_titles(fig, mask_empty_title=True):
     annotations_y = npu.trunc(annotations["y"], 15)
 
     sel = (
-        (titles_x[..., np.newaxis] == annotations_x[np.newaxis, np.newaxis, :]) &
-        (titles_y[..., np.newaxis] == annotations_y[np.newaxis, np.newaxis, :])
+        (titles_x[:, :, np.newaxis] == annotations_x[np.newaxis, np.newaxis, :]) &
+        (titles_y[:, :, np.newaxis] == annotations_y[np.newaxis, np.newaxis, :])
     )  # (row, col, annotation)
 
     if mask_empty_title:
         sel &= annotations["text"][np.newaxis, np.newaxis, :] != ""
 
+    row, col, annotation = np.where(sel)
+
     titles.mask = True
-    titles[sel.any(axis=-1)] = annotations[sel.any(axis=1).any(axis=0)]
+    titles[row, col] = annotations[annotation]
     return titles
 
 
@@ -167,17 +176,18 @@ def _get_subplot_domains_from_grid_ref(fig):
 
 
 def _validate_grid_ref(fig):
-    subplot_domains = _get_subplot_domains_from_grid_ref(fig)
-    fig._grid_ref = [
-        [
-            fig._grid_ref[row][col]
-            for row, col in row_cols
-        ]
-        for row_cols in np.stack([
-            len(subplot_domains) - 1 - np.argsort(subplot_domains["y"][::-1], axis=0)[::-1],
-            np.argsort(subplot_domains["x"], axis=1)
-        ], axis=-1)
-    ]
+    # subplot_domains = _get_subplot_domains_from_grid_ref(fig)
+    # print(subplot_domains)
+    # fig._grid_ref = [
+    #     [
+    #         fig._grid_ref[row][col]
+    #         for row, col in row_cols
+    #     ]
+    #     for row_cols in np.stack([
+    #         len(subplot_domains) - 1 - np.argsort(subplot_domains["y"][::-1], axis=0)[::-1],
+    #         np.argsort(subplot_domains["x"], axis=1)
+    #     ], axis=-1)
+    # ]
     subplot_domains = _get_subplot_domains_from_grid_ref(fig)
     if not npu.is_sorted(subplot_domains["x"], axis=1):
         raise RuntimeError(f"grid_ref domain x must be sorted along axis 1: \n{subplot_domains['x']}")
@@ -477,7 +487,10 @@ def get_new_fit_results(new_fig, fit_results, side):
     else:
         assert False
 
-    sel = np.arange(nfr.size).reshape(nfr.shape) < np.prod(fit_results.shape)
+    if side in ("left", "right"):
+        sel = np.arange(nfr.size).reshape(nfr.shape) < np.prod(fit_results.shape)
+    else:
+        sel = np.arange(nfr.size).reshape(nfr.shape[::-1]).T < np.prod(fit_results.shape)
 
     nfr[sel] = fit_results.flatten()
     return new_fit_results
@@ -534,7 +547,7 @@ def vstack(fig, *other_fig, fraction=0.5, vertical_spacing=None):
     return new_fig
 
 
-def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None):
+def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None) -> go.Figure:
     new_fig = copy(fig)
     # figs = [other_fig]
     figs = other_figs
@@ -593,26 +606,26 @@ def hstack(fig, *other_figs, fraction=0.5, horizontal_spacing=None):
 def get_subplot_coordinates(
         fig, x_order="left to right", y_order="top to bottom", flatten=True, mask_empty_subplots=False
 ):
-    a = np.array(
-        list(fig._get_subplot_coordinates()), dtype=[("row", "i8"), ("col", "i8")]
-    ).reshape(*_get_subplot_shape(fig))
-    # n_rows, n_cols, *_ = np.array(fig._grid_ref, dtype="O").shape
-    # a = np.array([
-    #     (row, col)
-    #     for row, col, *_ in sorted(
-    #         (
-    #             (row, col, np.mean(subplot.xaxis.domain), np.mean(subplot.yaxis.domain))
-    #             if subplot is not None
-    #             else (row, col, np.nan, np.nan)
-    #             for row, col, subplot in (
-    #                 (row, col, fig.get_subplot(row, col))
-    #                 for row, col in fig._get_subplot_coordinates()
-    #             )
-    #         ),
-    #         key=lambda row: (1 - row[-1], row[-2])
-    #     )
-    # ], dtype=[("row", "i8"), ("col", "i8")]).reshape(n_rows, n_cols)
-    #
+    # a = np.array(
+    #     list(fig._get_subplot_coordinates()), dtype=[("row", "i8"), ("col", "i8")]
+    # ).reshape(*_get_subplot_shape(fig))
+    n_rows, n_cols, *_ = np.array(fig._grid_ref, dtype="O").shape
+    a = np.array([
+        (row, col)
+        for row, col, *_ in sorted(
+            (
+                (row, col, np.mean(subplot.xaxis.domain), np.mean(subplot.yaxis.domain))
+                if subplot is not None
+                else (row, col, np.nan, np.nan)
+                for row, col, subplot in (
+                    (row, col, fig.get_subplot(row, col))
+                    for row, col in fig._get_subplot_coordinates()
+                )
+            ),
+            key=lambda row: (1 - row[-1], row[-2])
+        )
+    ], dtype=[("row", "i8"), ("col", "i8")]).reshape(n_rows, n_cols)
+
     if x_order == "left to right":
         pass
     elif x_order == "right to left":
@@ -698,6 +711,7 @@ def update_xaxes(fig, target="inside", **kwargs):
     np.put_along_axis(sel, np.argmax(sel, axis=0)[np.newaxis], False, axis=0)
     for row, col in a[sel]:
         fig.update_xaxes(**kwargs, row=row, col=col)
+    return fig
 
 
 def update_yaxes(fig, target="inside", **kwargs):
@@ -709,3 +723,11 @@ def update_yaxes(fig, target="inside", **kwargs):
     np.put_along_axis(sel, np.argmax(sel, axis=1)[:, np.newaxis], False, axis=1)
     for row, col in a[sel]:
         fig.update_yaxes(**kwargs, row=row, col=col)
+    return fig
+
+
+def show_empty_subplots(fig):
+    for row, col in fig._get_subplot_coordinates():
+        if next(fig.select_traces(row=row, col=col), None) is None:
+            if fig.get_subplot(row, col) is not None:
+                fig.add_trace(dict(name="_dummy_for_empty_subplots", x=[], y=[], showlegend=False), row=row, col=col)

@@ -155,7 +155,9 @@ def _histogram(args):
                         label = args["labels"][label]
                     args["category_orders"][label] = sort_by.tolist()
                 else:
-                    raise NotImplementedError(f"'{label}' must not be included in category_orders if as_qualitative == True")
+                    raise NotImplementedError(
+                        f"'{label}' must not be included in category_orders if as_qualitative == True"
+                    )
 
     data = args["data_frame"][args["x"]].to_numpy()
     weight = args["data_frame"]["weight"] if "weight" in args["data_frame"] else None

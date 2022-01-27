@@ -26,11 +26,6 @@ def scatter_matrix(df):
         if i_row >= i_col:
             if i_row == i_col:
                 fig.add_trace(
-                    # go.Histogram(
-                    #     name=f"dist plot of {df.columns[i_row]}",
-                    #     x=df.iloc[:, i_row],
-                    #     marker=dict(color="#636EFA")
-                    # ),
                     _histogram.histogram(
                         x=df.iloc[:, i_row],
                     ).update_traces(name=f"dist plot of {df.columns[i_row]}", marker=dict(color="#636EFA")).data[0],

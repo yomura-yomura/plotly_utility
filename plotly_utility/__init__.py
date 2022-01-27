@@ -1,17 +1,20 @@
 import inspect
+import itertools
+import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import numpy_utility as npu
 from . import graph_objects
 from . import offline
 from . import subplots
+from . import traces
 
 
 __all__ = [
     "express", "graph_objects", "offline",
 
     "get_traces_at", "add_secondary_axis", "get_data",
-    "to_numpy"
+    "to_numpy", "overlay_foreach_subplots"
 ]
 
 
@@ -152,7 +155,12 @@ def get_data(fig, i_data=1, reverse_along_row=True):
     return x, y
 
 
-def to_numpy(fig: go.Figure, flip_xy_if_any_bar_is_horizontal=True):
+def to_numpy(fig: go.Figure, flip_xy_if_any_bar_is_horizontal=True, x_order="left to right", y_order="top to bottom"):
+    if x_order is not None or y_order is not None:
+        subplot_coordinates = subplots.get_subplot_coordinates(fig, x_order, y_order, flatten=False)
+        fig_data = to_numpy(fig, flip_xy_if_any_bar_is_horizontal, None, None)
+        return fig_data[subplot_coordinates["row"] - 1, subplot_coordinates["col"] - 1]
+
     n_rows, n_cols = subplots._get_subplot_shape(fig)
     traces_list = [get_traces_at(fig, row, col) for row, col in fig._get_subplot_coordinates()]
 
@@ -206,16 +214,16 @@ def to_numpy(fig: go.Figure, flip_xy_if_any_bar_is_horizontal=True):
                ("row", "i1"), ("col", "i1"), ("domain_x", "f4"), ("domain_y", "f4")]
     ).view(np.ma.MaskedArray)
 
-    # order = np.lexsort((data["domain_x"], 1 - data["domain_y"]))
-    data.mask = (len_traces == 0)
-
+    # order = np.lexsort((1 - data["domain_y"], data["domain_x"]))
+    # print(order)
     # data = data[order]
+    data.mask = (len_traces == 0)
     data = data.reshape((n_rows, n_cols))
     data["facet_col"] = titles
 
     if hasattr(fig, "_fit_results"):
         fit_data = npu.from_dict(fig._fit_results)
-        fit_data = fit_data.flatten()[order].reshape((n_rows, n_cols, -1))
+        # fit_data = fit_data.flatten()[order].reshape((n_rows, n_cols, -1))
         data = npu.add_new_field_to(data, ("fit_result", fit_data.dtype, (fit_data.shape[-1],)), fit_data)
 
     return data
@@ -239,4 +247,36 @@ def for_each_row_and_col(fig, fn):
             fn(fig, row, col, data)
         else:
             raise ValueError("fn must take 1-3 parameters")
+    return fig
+
+
+from collections.abc import Iterable
+from typing import Union, Optional
+
+
+def overlay_foreach_subplots(fig_dict, colors: Optional[Union[dict, Iterable]] = None, opactiry=0.5):
+    first_key, *keys = fig_dict.keys()
+
+    if colors is None:
+        colors = dict(zip(fig_dict.keys(), itertools.cycle(px.colors.qualitative.Plotly)))
+    elif isinstance(colors, dict):
+        pass
+    elif isinstance(colors, Iterable):
+        colors = dict(zip(fig_dict.keys(), colors))
+    else:
+        raise TypeError(type(colors))
+
+    def get_fig(key_):
+        fig_ = subplots.copy(fig_dict[key_])
+        fig_.update_traces(name=key_, legendgroup=key_, marker_color=colors[key_], opacity=opactiry)
+        return fig_
+
+    fig = get_fig(first_key)
+    for key in keys:
+        fig_ = get_fig(key)
+        for row, col in fig._get_subplot_coordinates():
+            for trace in fig_.select_traces(row=row, col=col):
+                fig.add_trace(trace, row=row, col=col)
+    fig.layout.barmode = "overlay"
+    subplots.show_legend_once_for_legend_group(fig)
     return fig

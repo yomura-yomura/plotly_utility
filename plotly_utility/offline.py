@@ -6,6 +6,8 @@ import os
 import webbrowser
 import re
 import functools
+import plotly.graph_objs as go
+import warnings
 
 
 __all__ = ["figures_to_html", "plot"]
@@ -56,7 +58,8 @@ def _write_figs_to(dashboard, figs, include_mathjax=False):
     if depth(figs) == 2:
         figs = [fig if fig is not None else {} for row_figs in figs for fig in row_figs]
 
-    # n_rows = (len(figs) - 1) // n_cols + 1
+    figs = [go.Figure(fig) for fig in figs]
+
     if n_rows == 1:
         p = 100
     elif n_rows == 2:
@@ -75,9 +78,13 @@ def _write_figs_to(dashboard, figs, include_mathjax=False):
         elif fig == {}:
             pass
         else:
-            # if fig.layout.width is not None or fig.layout.height is not None:
-            #     warnings.warn("not supported yet if fig.layout.width or fig.layout.height has value")
-            #     fig.layout.width = fig.layout.height = None
+            if fig.layout.width is not None or fig.layout.height is not None:
+                warnings.warn("not completely supported yet if fig.layout.width or fig.layout.height has value")
+                #     fig.layout.width = fig.layout.height = None
+                if fig.layout.width is not None:
+                    fig.layout.width *= 0.9
+                if fig.layout.height is not None:
+                    fig.layout.height *= 0.9
 
             inner_html = plotly.offline.plot(
                 fig, include_plotlyjs=include_plotly_js, output_type='div', config=DEFAULT_CHART_CONFIG,
