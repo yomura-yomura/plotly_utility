@@ -1,17 +1,20 @@
 import itertools
 import re
 import warnings
-
 import plotly.subplots
 import plotly.graph_objs as go
 import numpy as np
 import numpy_utility as npu
+import plotly.express as px
 
 
 __all__ = [
     "hstack", "vstack",
     "show_legend_once_for_legend_group", "show_empty_subplots",
-    "update_xaxes", "update_yaxes"
+    "update_xaxes", "update_yaxes",
+    "vstack_alternately",
+
+    "add_residual_plot"
 ]
 
 
@@ -163,7 +166,8 @@ def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col, new_fig_max_subp
 def _get_subplot_domains_from_grid_ref(fig):
     def f(subplot_refs):
         if subplot_refs is None:
-            return np.inf, -np.inf
+            return np.nan, np.nan
+            # return np.inf, np.inf
         assert len(subplot_refs) == 1
         subplot_ref = subplot_refs[0]
         xaxis, yaxis = subplot_ref.layout_keys
@@ -172,27 +176,77 @@ def _get_subplot_domains_from_grid_ref(fig):
             np.mean(fig.layout[yaxis].domain)
         )
 
-    return npu.ja.apply(f, fig._grid_ref, 2).astype([("x", "f8"), ("y", "f8")])
+    a = npu.ja.apply(f, fig._grid_ref, 2).astype([("x", "f8"), ("y", "f8")])
+    return a
 
 
 def _validate_grid_ref(fig):
-    # subplot_domains = _get_subplot_domains_from_grid_ref(fig)
-    # print(subplot_domains)
-    # fig._grid_ref = [
-    #     [
-    #         fig._grid_ref[row][col]
-    #         for row, col in row_cols
-    #     ]
-    #     for row_cols in np.stack([
-    #         len(subplot_domains) - 1 - np.argsort(subplot_domains["y"][::-1], axis=0)[::-1],
-    #         np.argsort(subplot_domains["x"], axis=1)
-    #     ], axis=-1)
-    # ]
     subplot_domains = _get_subplot_domains_from_grid_ref(fig)
+
+    # print("\nbefore:")
+    # print(subplot_domains)
+
+    # min_x = np.nanmin(subplot_domains["x"], axis=0)
+    # max_x = np.nanmax(subplot_domains["x"], axis=0)
+    # min_y = np.nanmin(subplot_domains["y"], axis=1)
+    # max_y = np.nanmax(subplot_domains["y"], axis=1)
+
+    # if np.any(np.isnan(subplot_domains["x"])):
+    #     # nan_mask_x = np.any(np.isnan(subplot_domains["x"]), axis=0)
+    #     # assert np.all(min_x[nan_mask_x] == max_x[nan_mask_x])
+    #     nan_mask_x = np.isnan(subplot_domains["x"])
+    #     subplot_domains["x"][nan_mask_x] = np.inf
+    #
+    # if np.any(np.isnan(subplot_domains["y"])):
+    #     nan_mask_y = np.any(np.isnan(subplot_domains["y"]), axis=1)
+    #     assert np.all(min_y[nan_mask_y] == max_y[nan_mask_y])
+    #     subplot_domains["y"][nan_mask_y] = np.arange(10, 10 + np.count_nonzero(nan_mask_y))[:, np.newaxis]
+
+    nan_mask_x = np.isnan(subplot_domains["x"])
+    nan_mask_y = np.isnan(subplot_domains["y"])
+    assert np.all(nan_mask_x == nan_mask_y)
+    nan_mask = nan_mask_x
+
+    # if not npu.is_sorted(subplot_domains["x"], axis=1):
+    #     raise RuntimeError(f"grid_ref domain x must be sorted along axis 1: \n{subplot_domains['x']}")
+    # if not npu.is_sorted(subplot_domains["y"][::-1], axis=0):
+    #     raise RuntimeError(f"grid_ref domain y must be reversely sorted along axis 0: \n{subplot_domains['y']}")
+    #
+    # print(subplot_domains)
+    #
+    # subplot_domain_orders = np.rec.fromarrays([
+    #     np.argsort(np.argsort(subplot_domains["x"], axis=1), axis=1),
+    #     np.argsort(np.argsort(subplot_domains["y"], axis=0), axis=0)
+    # ], names=["x", "y"])
+    subplot_domains["y"] = 1 - subplot_domains["y"]  # the left-top edge is the origin
+    subplot_domain_orders = np.argsort(subplot_domains[~nan_mask], order=["y", "x"])
+    # print(subplot_domain_orders)
+
+    order = np.arange(subplot_domains.size).reshape(subplot_domains.shape)
+    order[~nan_mask] = order[~nan_mask][subplot_domain_orders]
+    # print(order)
+
+    # order = np.argsort(subplot_domains.flatten(), order=["y", "x"]).reshape(subplot_domains.shape)[::-1]
+    # order = np.argsort(subplot_domain_orders.flatten(), order=["y", "x"]).reshape(subplot_domains.shape)[::-1]
+
+    if np.all(order.flatten() == np.arange(order.size)):
+        pass
+    else:
+        n_rows, n_cols = _get_subplot_shape(fig)
+        fig._grid_ref = [
+            [fig._grid_ref[i_row][i_col] for i_row, i_col in idx_rows]
+            for idx_rows in np.stack([order // n_cols, order % n_cols], axis=-1)
+        ]
+
+    # print("\nafter")
+    # print(_get_subplot_domains_from_grid_ref(fig))
+
+    subplot_domains = _get_subplot_domains_from_grid_ref(fig)
+
     if not npu.is_sorted(subplot_domains["x"], axis=1):
         raise RuntimeError(f"grid_ref domain x must be sorted along axis 1: \n{subplot_domains['x']}")
     if not npu.is_sorted(subplot_domains["y"][::-1], axis=0):
-        raise RuntimeError(f"grid_ref domain y must be sorted along axis 0: \n{subplot_domains['y']}")
+        raise RuntimeError(f"grid_ref domain y must be reversely sorted along axis 0: \n{subplot_domains['y']}")
 
 
 def _scale_all_objects(fig, side, fraction=0.5, spacing=None):
@@ -294,12 +348,13 @@ def combine_subplots(new_fig, fig, side, fraction=0.5, spacing=None):
     new_fig_max_subplot_ids = get_max_subplot_ids(new_fig)
 
     for (row1, col1), (row2, col2) in zip(subplot_coordinates1, subplot_coordinates2):
+        # print(f"({row2}, {col2}) -> ({row1}, {col1})")
         _copy_subplot_ref(new_fig, fig, row1, col1, row2, col2, new_fig_max_subplot_ids)
+        # print(_get_subplot_domains_from_grid_ref(new_fig))
 
     _validate_grid_ref(new_fig)
     _validate_grid_ref(fig)
 
-    # print(new_fig.layout)
     if side in ("top", "bottom"):
         assert side == "bottom"
         for row, col in fig._get_subplot_coordinates():
@@ -317,76 +372,6 @@ def combine_subplots(new_fig, fig, side, fraction=0.5, spacing=None):
             )
 
     return new_fig
-
-
-# def extend_subplot(fig: go.Figure, n_subplots, side="bottom", fraction=0.5,
-#                    subplot_titles=None,
-#                    vertical_spacing=None, horizontal_spacing=None):
-#     n_rows, n_cols = _get_subplot_shape(fig)
-#
-#     if side in ("top", "bottom"):
-#         if n_subplots > n_cols:
-#             raise NotImplementedError(f"{n_subplots} > {n_cols}")
-#
-#         if vertical_spacing is None:
-#             vertical_spacing = default_total_vertical_spacing / 2
-#         if horizontal_spacing is None:
-#             horizontal_spacing = default_total_horizontal_spacing / n_subplots
-#
-#         _scale_all_objects(fig, side, fraction, vertical_spacing)
-#
-#         edges = np.linspace(0, 1 - horizontal_spacing * (n_subplots - 1), n_subplots + 1)
-#         left_edges = edges[:-1] + np.arange(len(edges[:-1])) * horizontal_spacing
-#         right_edges = edges[1:] + np.arange(len(edges[1:])) * horizontal_spacing
-#         new_x_domains = zip(left_edges, right_edges)
-#         new_y_domains = itertools.repeat((0, fraction - vertical_spacing / 2))
-#
-#         new_grid_ref_row = [
-#             plotly.subplots._init_subplot_xy(fig.layout, False, x_domain, y_domain, get_max_subplot_ids(fig))
-#             for x_domain, y_domain in zip(new_x_domains, new_y_domains)
-#         ] + [None] * (n_cols - n_subplots)
-#         fig._grid_ref.append(new_grid_ref_row)
-#
-#         new_rows = itertools.repeat(n_rows + 1)
-#         new_cols = range(1, n_subplots + 1)
-#     elif side in ("right", "left"):
-#         if n_subplots > n_rows:
-#             raise NotImplementedError(f"{n_subplots} > {n_rows}")
-#
-#         if vertical_spacing is None:
-#             vertical_spacing = default_total_vertical_spacing / n_subplots
-#         if horizontal_spacing is None:
-#             horizontal_spacing = default_total_horizontal_spacing / 2
-#
-#         _scale_all_objects(fig, side, fraction, horizontal_spacing)
-#
-#         edges = np.linspace(0, 1 - vertical_spacing * (n_subplots - 1), n_subplots + 1)
-#         left_edges = edges[:-1] + np.arange(len(edges[:-1])) * vertical_spacing
-#         right_edges = edges[1:] + np.arange(len(edges[1:])) * vertical_spacing
-#         new_x_domains = itertools.repeat((fraction + horizontal_spacing / 2, 1))
-#         new_y_domains = zip(left_edges, right_edges)
-#
-#         new_grid_ref_col = [
-#             plotly.subplots._init_subplot_xy(fig.layout, False, x_domain, y_domain, get_max_subplot_ids(fig))
-#             for x_domain, y_domain in zip(new_x_domains, new_y_domains)
-#         ] + [None] * (n_rows - n_subplots)
-#         for i, new_row in enumerate(new_grid_ref_col):
-#             fig._grid_ref[i].append(new_row)
-#
-#         new_rows = itertools.repeat(n_rows + 1)
-#         new_cols = range(1, n_subplots + 1)
-#     else:
-#         raise NotImplementedError(side)
-#
-#     if subplot_titles is not None:
-#         for row, col, title in zip(new_rows, new_cols, subplot_titles):
-#             add_subplot_title(fig, title, row, col)
-#
-#     def _grid_str():
-#         raise NotImplementedError
-#     fig._grid_str = _grid_str
-#
-#     return fig
 
 
 def get_max_subplot_ids(fig):
@@ -469,6 +454,8 @@ def add_old_trace_to_new_fig(old_fig, new_fig, new_fig_max_subplot_ids, row, col
     for new_shape in iter_with_new_refs(old_fig.layout.shapes):
         new_fig.add_shape(new_shape)
 
+    _validate_grid_ref(new_fig)
+
 
 def get_new_fit_results(new_fig, fit_results, side):
     new_fit_results = np.ma.empty(
@@ -525,7 +512,6 @@ def vstack(fig, *other_fig, fraction=0.5, vertical_spacing=None):
 
         # Shapes
         for shape in fig.select_shapes(selector=dict(yref="paper")):
-        # for shape in fig.select_shapes():
             new_fig.add_shape(copy(shape))
 
         # Fit Results
@@ -731,3 +717,121 @@ def show_empty_subplots(fig):
         if next(fig.select_traces(row=row, col=col), None) is None:
             if fig.get_subplot(row, col) is not None:
                 fig.add_trace(dict(name="_dummy_for_empty_subplots", x=[], y=[], showlegend=False), row=row, col=col)
+
+
+def vstack_alternately(
+        upper_fig, lower_fig, small_space_fraction=0.9, vertical_spacing=0.1, horizontal_spacing=0.08,
+        subplot_titles=None
+):
+    import plotly.subplots
+    import more_itertools
+    if subplot_titles is not None:
+        subplot_titles = np.ravel(list(more_itertools.roundrobin([[""] * 4] * 4, subplot_titles[::-1])))
+
+    fig = plotly.subplots.make_subplots(
+        rows=8, cols=4, row_heights=[0.5] * 8, column_widths=[1] * 4, start_cell="bottom-left",
+        vertical_spacing=vertical_spacing, horizontal_spacing=horizontal_spacing,
+        subplot_titles=subplot_titles
+    )
+
+    traces_to_be_added = []
+    for row, col in upper_fig._get_subplot_coordinates():
+        for upper_trace, lower_trace in zip(
+            upper_fig.select_traces(row=row, col=col), lower_fig.select_traces(row=row, col=col)
+        ):
+            traces_to_be_added.append((upper_trace, 2 * row, col))
+            traces_to_be_added.append((lower_trace, 2 * row - 1, col))
+
+        upper_subplot = plotly.subplots._get_grid_subplot(fig, 2 * row, col)
+        lower_subplot = plotly.subplots._get_grid_subplot(fig, 2 * row - 1, col)
+        upper_subplot.xaxis.update(
+            # matches=lower_subplot.yaxis.anchor,
+            matches="x",
+            showticklabels=False
+        )
+        upper_subplot.yaxis.title = "Amplitude"
+        lower_subplot.yaxis.update(
+            title="Phase", ticksuffix="°"
+        )
+        lower_subplot.xaxis.update(
+            title="Frequency [Hz]",
+            matches="x"
+        )
+        full_height = upper_subplot.yaxis.domain[0] - lower_subplot.yaxis.domain[1]
+        upper_domain = list(upper_subplot.yaxis.domain)
+        lower_domain = list(lower_subplot.yaxis.domain)
+        upper_domain[0] -= small_space_fraction * full_height / 2
+        lower_domain[1] += small_space_fraction * full_height / 2
+        upper_subplot.yaxis.domain = tuple(upper_domain)
+        lower_subplot.yaxis.domain = tuple(lower_domain)
+
+    traces_to_be_added = sorted(traces_to_be_added, key=lambda arg: arg[0].name)
+    for trace, row, col in traces_to_be_added:
+        fig.add_trace(trace, row=row, col=col)
+
+    show_legend_once_for_legend_group(fig)
+    return fig
+
+
+def add_residual_plot(fig, target_name, layout_kwargs=None, log_scale=None):
+    if log_scale is None:
+        is_log = (fig.layout.yaxis.type == "log")
+    else:
+        assert log_scale in (True, False)
+        is_log = log_scale
+
+    traces = {trace.name: trace for trace in fig.data}
+    colors = {trace.name: trace.marker.color for trace in fig.data}
+
+    if target_name not in traces.keys():
+        raise ValueError(f"target_name '{target_name}' is not found in traces of fig: {', '.join(traces.keys())}")
+
+    obs_trace = traces.pop(target_name)
+    x = obs_trace.x
+    assert all(np.all(x == trace.x) for trace in traces.values())
+    obs_y = obs_trace.y
+    # error_y = np.sqrt(obs_y)
+    error_y = obs_trace.error_y.array
+    if error_y is None:
+        error_y = itertools.repeat(np.nan)
+        is_error_y_valid = False
+    else:
+        is_error_y_valid = True
+
+    assert np.all(fig.data[0].x == fig.data[1].x)
+
+    if is_log:
+        residual_data = npu.to_tidy_data({
+            k: zip(x, np.log10(v.y / obs_y), np.log10(np.e) * error_y / obs_y)
+            for k, v in traces.items()
+        }, "type", ["x", "log(Ratio)", "error_y"])
+        residual_fig = px.scatter(
+            residual_data,
+            x="x", y="log(Ratio)",
+            error_y="error_y" if is_error_y_valid else None,
+            color="type",
+            category_orders={"type": list(colors.keys())},
+            color_discrete_sequence=list(colors.values())
+        )
+    else:
+        residual_data = npu.to_tidy_data({
+            k: zip(x, v.y - obs_y, error_y)
+            for k, v in traces.items()
+        }, "type", ["x", "Residual", "error_y"])
+        residual_fig = px.scatter(
+            residual_data,
+            x="x", y="Residual",
+            error_y="error_y" if is_error_y_valid else None,
+            color="type",
+            category_orders={"type": list(colors.keys())},
+            color_discrete_sequence=list(colors.values())
+        )
+
+    residual_fig.update_xaxes(fig.layout.xaxis).update_yaxes(rangemode="tozero").update_traces(showlegend=False)
+
+    if layout_kwargs is not None:
+        residual_fig.update_layout(layout_kwargs)
+
+    fig = vstack(fig, residual_fig, fraction=0.2, vertical_spacing=0.01)
+    fig.layout.xaxis.update(title=None, showticklabels=False, matches="x2")
+    return fig
