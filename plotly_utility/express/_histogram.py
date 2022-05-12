@@ -151,8 +151,8 @@ def _histogram(args):
                 sort_by = np.unique(args["data_frame"].loc[:, label]).astype(str)
                 args["data_frame"].loc[:, label] = args["data_frame"].loc[:, label].astype(str)
                 if label not in args["category_orders"]:
-                    if label in args["labels"]:
-                        label = args["labels"][label]
+                    # if label in args["labels"]:
+                    #     label = args["labels"][label]
                     args["category_orders"][label] = sort_by.tolist()
                 else:
                     raise NotImplementedError(
