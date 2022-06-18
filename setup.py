@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='plotly_utility',
-    version='1.9.1',
+    version='1.10.0',
     description='',
     author='yomura',
     author_email='yomura@hoge.jp',
