@@ -724,7 +724,7 @@ def show_empty_subplots(fig):
 def vstack_alternately(
         upper_fig, lower_fig, small_spacing_fraction=0.1,
         vertical_spacing=0.1, horizontal_spacing=0.08,
-        subplot_titles=None
+        subplot_titles=None, x_axes_label="x"
 ):
     """
     Actual small spacing = vertical_spacing * small_spacing_fraction
@@ -761,14 +761,14 @@ def vstack_alternately(
             matches="x",
             showticklabels=False
         )
-        upper_subplot.yaxis.title = "Amplitude"
-        lower_subplot.yaxis.update(
-            title="Phase", ticksuffix="°"
-        )
-        lower_subplot.xaxis.update(
-            title="Frequency [Hz]",
-            matches="x"
-        )
+        upper_yaxis = next(upper_fig.select_yaxes(row=row, col=col))
+        lower_yaxis = next(lower_fig.select_yaxes(row=row, col=col))
+        lowest_row = get_subplot_coordinates(lower_fig)["row"][-1]
+        lowest_xaxis = next(lower_fig.select_xaxes(row=lowest_row, col=col))
+
+        upper_subplot.yaxis.update({k: upper_yaxis[k] for k in ("title", "ticksuffix")})
+        lower_subplot.yaxis.update({k: lower_yaxis[k] for k in ("title", "ticksuffix")})
+        lower_subplot.xaxis.update({k: lowest_xaxis[k] for k in ("title", "ticksuffix")})
         full_height = upper_subplot.yaxis.domain[0] - lower_subplot.yaxis.domain[1]
         upper_domain = list(upper_subplot.yaxis.domain)
         lower_domain = list(lower_subplot.yaxis.domain)
