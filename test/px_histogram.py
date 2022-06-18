@@ -5,7 +5,6 @@ import plotly.express as px
 import plotly
 
 
-
 if __name__ == "__main__":
     df = px.data.tips()
 
@@ -33,7 +32,11 @@ if __name__ == "__main__":
     import pandas as pd
     df = pd.read_csv("https://storage.googleapis.com/tf-datasets/titanic/train.csv")
     df = df.sort_values(by="age")
-    figs = list(pux.make_histograms_with_facet_col(df, x="survived", facet_col="age", as_qualitative=True))
+    figs = list(
+        pux.make_histograms_with_facet_col(
+            df, x="survived", facet_col="age", as_qualitative="survived"
+        )
+    )
     for f in figs:
         f.show()
 

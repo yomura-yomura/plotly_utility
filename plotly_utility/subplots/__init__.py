@@ -1,11 +1,12 @@
 import itertools
 import re
-import warnings
 import plotly.subplots
 import plotly.graph_objs as go
 import numpy as np
 import numpy_utility as npu
 import plotly.express as px
+import plotly.subplots
+import more_itertools
 
 
 __all__ = [
@@ -136,7 +137,7 @@ def _copy_subplot_ref(new_fig, fig, new_row, new_col, row, col, new_fig_max_subp
         for k, id_ in zip(["xaxis", "yaxis"], map(lambda a: 1 if len(a) == 5 else int(a[5:]), subplot_ref.layout_keys))
     }
 
-    new_subplot_ref = plotly.subplots._init_subplot_xy(
+    new_subplot_ref = plotly._subplots._init_subplot_xy(
         new_fig.layout, False, *(fig.layout[kw]["domain"] for kw in subplot_ref.layout_keys),
         # get_max_subplot_ids(new_fig)
         new_fig_max_subplot_ids
@@ -427,7 +428,8 @@ def add_old_trace_to_new_fig(old_fig, new_fig, new_fig_max_subplot_ids, row, col
             if obj.yref is None:
                 obj.yref = "y"
 
-            if (matched_xref := ref_pattern.match(obj.xref)) or ref_pattern.match(obj.yref):
+            matched_xref = ref_pattern.match(obj.xref)
+            if (matched_xref is not None) or ref_pattern.match(obj.yref):
                 matched_yref = ref_pattern.match(obj.yref)
                 assert matched_yref is not None
 
@@ -720,16 +722,26 @@ def show_empty_subplots(fig):
 
 
 def vstack_alternately(
-        upper_fig, lower_fig, small_space_fraction=0.9, vertical_spacing=0.1, horizontal_spacing=0.08,
+        upper_fig, lower_fig, small_spacing_fraction=0.1,
+        vertical_spacing=0.1, horizontal_spacing=0.08,
         subplot_titles=None
 ):
-    import plotly.subplots
-    import more_itertools
+    """
+    Actual small spacing = vertical_spacing * small_spacing_fraction
+    """
+    upper_fig_shape = _get_subplot_shape(upper_fig)
+    lower_fig_shape = _get_subplot_shape(lower_fig)
+    if upper_fig_shape[1] != lower_fig_shape[1]:
+        raise ValueError("the shapes of upper_fig and lower_fig mismatched.")
+    fig_shape = (upper_fig_shape[0] + lower_fig_shape[0], upper_fig_shape[1])
+
     if subplot_titles is not None:
         subplot_titles = np.ravel(list(more_itertools.roundrobin([[""] * 4] * 4, subplot_titles[::-1])))
 
     fig = plotly.subplots.make_subplots(
-        rows=8, cols=4, row_heights=[0.5] * 8, column_widths=[1] * 4, start_cell="bottom-left",
+        rows=fig_shape[0], cols=fig_shape[1],
+        row_heights=[0.5] * fig_shape[0], column_widths=[1] * fig_shape[1],
+        start_cell="bottom-left",
         vertical_spacing=vertical_spacing, horizontal_spacing=horizontal_spacing,
         subplot_titles=subplot_titles
     )
@@ -742,8 +754,8 @@ def vstack_alternately(
             traces_to_be_added.append((upper_trace, 2 * row, col))
             traces_to_be_added.append((lower_trace, 2 * row - 1, col))
 
-        upper_subplot = plotly.subplots._get_grid_subplot(fig, 2 * row, col)
-        lower_subplot = plotly.subplots._get_grid_subplot(fig, 2 * row - 1, col)
+        upper_subplot = plotly._subplots._get_grid_subplot(fig, 2 * row, col)
+        lower_subplot = plotly._subplots._get_grid_subplot(fig, 2 * row - 1, col)
         upper_subplot.xaxis.update(
             # matches=lower_subplot.yaxis.anchor,
             matches="x",
@@ -760,8 +772,8 @@ def vstack_alternately(
         full_height = upper_subplot.yaxis.domain[0] - lower_subplot.yaxis.domain[1]
         upper_domain = list(upper_subplot.yaxis.domain)
         lower_domain = list(lower_subplot.yaxis.domain)
-        upper_domain[0] -= small_space_fraction * full_height / 2
-        lower_domain[1] += small_space_fraction * full_height / 2
+        upper_domain[0] -= (1 - small_spacing_fraction) * full_height / 2
+        lower_domain[1] += (1 - small_spacing_fraction) * full_height / 2
         upper_subplot.yaxis.domain = tuple(upper_domain)
         lower_subplot.yaxis.domain = tuple(lower_domain)
 

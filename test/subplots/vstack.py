@@ -1,8 +1,6 @@
 import numpy as np
-import plotly
 import plotly_utility.express as pux
 import plotly_utility
-
 
 
 if __name__ == "__main__":
@@ -17,8 +15,6 @@ if __name__ == "__main__":
     fig1 = plotly_utility.subplots.hstack(fig, fig)
     fig2 = plotly_utility.subplots.vstack(fig1, fig)
 
-
     plotly_utility.subplots.vstack(fig2, fig2).show()
 
     fig2.show()
-

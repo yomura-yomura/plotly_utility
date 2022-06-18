@@ -390,9 +390,15 @@ def make_histograms_with_facet_col(
     height=None,
 
     weight=None,
-    as_qualitative=False
+    as_qualitative=None,
+    use_different_bin_widths=False,
+    disable_xaxis_matches=False,
+    disable_yaxis_matches=False,
+    marginal_residual_plot=False,
+    use_log_x_bins=False
 ):
-    args = _build_dataframe(locals())
+    # args = _build_dataframe(locals())
+    args = _core.build_dataframe(locals(), go.Histogram)
     return _make_histograms_with_facet_col(args)
 
 

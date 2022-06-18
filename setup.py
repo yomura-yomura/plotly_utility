@@ -10,7 +10,10 @@ setup(
     packages=find_packages(),
     install_requires=[
         "numpy",
+        "pandas",
         "plotly >= 4.14.2",
         "numpy_utility @ git+https://github.com/yomura-yomura/numpy_utility",
+        "Pillow",
+        "matplotlib"
     ]
 )

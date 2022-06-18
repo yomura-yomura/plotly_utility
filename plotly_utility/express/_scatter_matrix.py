@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 from . import _histogram
+from ..mpl_utils import mpl_batch_mode
 
 
 __all__ = ["scatter_matrix"]
@@ -53,29 +54,30 @@ def scatter_matrix(df):
         else:
             subplot = fig.get_subplot(i_row + 1, i_col + 1)
 
-            try:
-                plt.figure(figsize=(2, 2))
-                _corrdot(df.iloc[:, i_row], df.iloc[:, i_col])
+            with mpl_batch_mode():
+                try:
+                    plt.figure(figsize=(2, 2))
+                    _corrdot(df.iloc[:, i_row], df.iloc[:, i_col])
 
-                with io.BytesIO() as fp:
-                    plt.savefig(fp, format="png")
-                    img = PIL.Image.open(fp)
+                    with io.BytesIO() as fp:
+                        plt.savefig(fp, format="png")
+                        img = PIL.Image.open(fp)
 
-                    fig.add_layout_image(
-                        xref="x domain", yref="y domain",
-                        row=i_row + 1, col=i_col + 1,
-                        # xref="paper", yref="paper",
-                        xanchor="center",
-                        yanchor="middle",
-                        x=np.mean(subplot.xaxis.domain),
-                        y=np.mean(subplot.yaxis.domain),
-                        sizex=subplot.xaxis.domain[1] - subplot.xaxis.domain[0],
-                        sizey=subplot.yaxis.domain[1] - subplot.yaxis.domain[0],
-                        source=img
-                    )
-            except TypeError as e:
-                print(f"encountered {e.__class__.__name__}: {e}", file=sys.stderr)
-            plt.close()
+                        fig.add_layout_image(
+                            xref="x domain", yref="y domain",
+                            row=i_row + 1, col=i_col + 1,
+                            # xref="paper", yref="paper",
+                            xanchor="center",
+                            yanchor="middle",
+                            x=np.mean(subplot.xaxis.domain),
+                            y=np.mean(subplot.yaxis.domain),
+                            sizex=subplot.xaxis.domain[1] - subplot.xaxis.domain[0],
+                            sizey=subplot.yaxis.domain[1] - subplot.yaxis.domain[0],
+                            source=img
+                        )
+                except TypeError as e:
+                    print(f"encountered {e.__class__.__name__}: {e}", file=sys.stderr)
+                plt.close()
 
     for i in range(n_rows):
         fig.update_xaxes(
@@ -96,6 +98,7 @@ def scatter_matrix(df):
 def _corrdot(*args, **kwargs):
     corr_r = args[0].corr(args[1], 'pearson')
     corr_text = f"{corr_r:2.2f}".replace("0.", ".")
+
     ax = plt.gca()
     ax.set_axis_off()
     marker_size = abs(corr_r) * 10000
@@ -106,28 +109,21 @@ def _corrdot(*args, **kwargs):
                 ha='center', va='center', fontsize=font_size)
 
 
-def _scatter_matrix(df, filename=None):
-    import seaborn as sns
-
-    df = pd.DataFrame(df)
-
-    sns.set(style='white', font_scale=1.6)
-    g = sns.PairGrid(df, aspect=1.4, diag_sharey=False)
-    g.map_lower(sns.regplot, lowess=True, ci=False, line_kws={'color': 'black'})
-    g.map_diag(sns.histplot, kde_kws={'color': 'black'})
-    g.map_upper(_corrdot)
-
-    if filename is not None:
-        plt.savefig(filename)
-        # import webbrowser
-        # webbrowser.open_new(r"file://C:{}".format(str(filename).replace("/", "\\")))
-    plt.show()
-    # plt.draw()
-    # plt.pause(0.001)
-
-
-# import numpy as np
-# from sklearn.datasets import load_iris
-# iris = load_iris()
-# df = pd.DataFrame(data=np.c_[iris['data'], iris['target']],
-#                   columns= iris['feature_names'] + ['target'])
+# def _scatter_matrix(df, filename=None):
+#     import seaborn as sns
+#
+#     df = pd.DataFrame(df)
+#
+#     sns.set(style='white', font_scale=1.6)
+#     g = sns.PairGrid(df, aspect=1.4, diag_sharey=False)
+#     g.map_lower(sns.regplot, lowess=True, ci=False, line_kws={'color': 'black'})
+#     g.map_diag(sns.histplot, kde_kws={'color': 'black'})
+#     g.map_upper(_corrdot)
+#
+#     if filename is not None:
+#         plt.savefig(filename)
+#         # import webbrowser
+#         # webbrowser.open_new(r"file://C:{}".format(str(filename).replace("/", "\\")))
+#     plt.show()
+#     # plt.draw()
+#     # plt.pause(0.001)

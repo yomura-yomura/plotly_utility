@@ -1,10 +1,7 @@
 import plotly_utility.express as pux
 import plotly_utility.subplots
 import numpy as np
-import pandas as pd
 import numpy_utility as npu
-import plotly
-plotly.io.renderers.default = "browser"
 
 
 if __name__ == "__main__":
