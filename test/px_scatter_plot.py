@@ -13,6 +13,10 @@ if __name__ == "__main__":
     df["y1"] = 2 * df["x1"] + np.random.normal(0, 1, size=size)
     df["x2"] = np.random.normal(0, 1, size=size)
     df["y2"] = 0.5 * df["x2"] + np.random.normal(0, 1, size=size)
+    df["type"] = np.random.choice(["A", "B"], size=size)
 
-    fig = pux.scatter_matrix(df)
+    fig = pux.scatter_matrix(df.drop(columns="type"))
+    fig.show()
+
+    fig = pux.scatter_matrix(df, color="type", barmode="overlay")
     fig.show()

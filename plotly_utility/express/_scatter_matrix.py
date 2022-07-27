@@ -1,4 +1,7 @@
 import sys
+import warnings
+
+import plotly.express as px
 import plotly.subplots
 import plotly.graph_objs as go
 import itertools
@@ -14,8 +17,13 @@ from ..mpl_utils import mpl_batch_mode
 __all__ = ["scatter_matrix"]
 
 
-def scatter_matrix(df):
+def scatter_matrix(df, color=None, barmode=None, width=None, height=None):
     df = pd.DataFrame(df)
+
+    if color is not None:
+        _color = df[color]
+        df = df.drop(columns=color)
+        color = _color
 
     n_cols = n_rows = len(df.columns)
 
@@ -26,23 +34,30 @@ def scatter_matrix(df):
     for i_row, i_col in itertools.product(range(n_rows), range(n_cols)):
         if i_row >= i_col:
             if i_row == i_col:
-                fig.add_trace(
-                    _histogram.histogram(
-                        x=df.iloc[:, i_row],
-                    ).update_traces(name=f"dist plot of {df.columns[i_row]}", marker=dict(color="#636EFA")).data[0],
-                    row=i_row + 1, col=i_col + 1
+                _fig = _histogram.histogram(
+                    x=df.iloc[:, i_row],
+                    color=color, color_discrete_sequence=px.colors.qualitative.Plotly,
+                    barmode=barmode
                 )
+                if color is None:
+                    _fig = _fig.update_traces(name=f"dist plot of {df.columns[i_row]}")
+                traces = _fig.data
+
+                fig.add_traces(traces, rows=[i_row + 1] * len(traces), cols=[i_col + 1] * len(traces))
+
             elif i_row > i_col:
-                fig.add_trace(
-                    go.Scattergl(
-                        mode="markers",
-                        name=f"scatter plot of {df.columns[i_row]} vs {df.columns[i_col]}",
-                        x=df.iloc[:, i_col],
-                        y=df.iloc[:, i_row],
-                        marker=dict(color="#636EFA")
-                    ),
-                    row=i_row + 1, col=i_col + 1
+                _fig = px.scatter(
+                    # mode="markers",
+                    x=df.iloc[:, i_col],
+                    y=df.iloc[:, i_row],
+                    color=color, color_discrete_sequence=px.colors.qualitative.Plotly
                 )
+                if color is None:
+                    _fig = _fig.update_traces(name=f"scatter plot of {df.columns[i_row]} vs {df.columns[i_col]}")
+                traces = _fig.data
+
+                fig.add_traces(traces, rows=[i_row + 1] * len(traces), cols=[i_col + 1] * len(traces))
+
                 fig.update_yaxes(
                     matches=fig.get_subplot(i_row + 1, 1).xaxis.anchor, showticklabels=False,
                     row=i_row + 1, col=i_col + 1
@@ -53,6 +68,9 @@ def scatter_matrix(df):
             )
         else:
             subplot = fig.get_subplot(i_row + 1, i_col + 1)
+
+            if color is not None:
+                warnings.warn("multiple corr plots not supported yet if color is not None", UserWarning)
 
             with mpl_batch_mode():
                 try:
@@ -90,7 +108,7 @@ def scatter_matrix(df):
         )
 
     fig.update_traces(showlegend=False)
-    fig.update_layout(bargap=0)
+    fig.update_layout(bargap=0, width=width, height=height)
 
     return fig
 
