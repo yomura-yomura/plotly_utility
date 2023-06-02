@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plotly_utility"
+description = "https://github.com/yomura-yomura/plotly_utility"
+readme = "README.md"
+dependencies = [
+    "numpy",
+    "pandas",
+    "plotly >= 4.14.2",
+    "numpy_utility @ git+https://github.com/yomura-yomura/numpy_utility",
+    "Pillow",
+    "matplotlib"
+]
+dynamic = ["version"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+
+# src/foo/__init__.py の version を参照する
+[tool.setuptools.dynamic]
+version = {attr = "plotly_utility.__version__"}
+
+# パッケージ作成時に指定のファイルにバージョン情報を書き込む
+[tool.setuptools_scm]
+write_to = "src/plotly_utility/_version.py"

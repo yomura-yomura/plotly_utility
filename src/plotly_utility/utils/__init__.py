@@ -4,14 +4,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 import numpy_utility as npu
-from . import graph_objects
-from . import offline
-from . import subplots
-from . import traces
-
+from . import mapbox
+from .. import subplots
 
 __all__ = [
-    "express", "graph_objects", "offline",
+    "mapbox",
 
     "get_traces_at", "add_secondary_axis", "get_data",
     "to_numpy", "overlay_foreach_subplots"

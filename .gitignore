@@ -1,4 +1,5 @@
 .idea/
 **/__pycache__/
-test/temp-plot.html
-plotly_utility.egg-info/
+**/*.html
+src/plotly_utility.egg-info/
+build/
