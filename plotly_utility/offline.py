@@ -179,7 +179,7 @@ def plot(figs, filename="temp-plot.html", auto_open=True, editable=True,
     figures_to_html(figs, filename, auto_open, editable, include_mathjax)
 
 
-def mpl_plot(fig, width=None, height=None, scale=1):
+def mpl_plot(fig, width=None, height=None, scale=1, engine="kaleido"):
     """
     scale:
         0.01 <= scale <= 100 is recommended.
@@ -192,14 +192,20 @@ def mpl_plot(fig, width=None, height=None, scale=1):
     maximum_size_of_dots = int((PIL.Image.MAX_IMAGE_PIXELS - 1) * scale / 100)
 
     if width is None:
-        width = plotly.io.kaleido.scope.default_width if fig.layout.width is None else fig.layout.width
+        if engine == "kaleido":
+            width = plotly.io.kaleido.scope.default_width if fig.layout.width is None else fig.layout.width
+        elif engine == "orca":
+            width = plotly.io.orca.config.default_width if fig.layout.width is None else fig.layout.width
 
     if height is None:
-        height = plotly.io.kaleido.scope.default_height if fig.layout.height is None else fig.layout.height
+        if engine == "kaleido":
+            height = plotly.io.kaleido.scope.default_height if fig.layout.height is None else fig.layout.height
+        elif engine == "orca":
+            height = plotly.io.orca.config.default_height if fig.layout.height is None else fig.layout.height
 
     with io.BytesIO() as fp:
         scale = np.sqrt(maximum_size_of_dots / (width * height))
-        fig.write_image(fp, format="png", width=width, height=height, scale=scale, engine="kaleido")
+        fig.write_image(fp, format="png", width=width, height=height, scale=scale, engine=engine)
         pil = PIL.Image.open(fp)
         dpi = np.sqrt(maximum_size_of_dots / np.prod(pil.size))
         plt_fig = plt.figure(figsize=(pil.size[0], pil.size[1]), dpi=dpi)
@@ -207,8 +213,6 @@ def mpl_plot(fig, width=None, height=None, scale=1):
         ax.imshow(pil)
         ax.axis("off")
         plt_fig.subplots_adjust(bottom=0, top=1, left=0, right=1)
-        # import sys
-        # print(sys.getsizeof(fp)/1024**2)
         plt_fig.show()
         plt.close(plt_fig)
 
