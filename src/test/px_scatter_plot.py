@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
-import plotly_utility.express as pux
 import plotly
 
+import plotly_utility.express as pux
 
 if __name__ == "__main__":
     np.random.seed(0)

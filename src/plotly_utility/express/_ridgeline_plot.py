@@ -1,6 +1,5 @@
 import plotly.express as px
 
-
 __all__ = ["ridgeline_plot"]
 
 

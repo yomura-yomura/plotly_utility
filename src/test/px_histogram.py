@@ -1,9 +1,9 @@
 import numpy as np
+import plotly
+import plotly.express as px
+
 import plotly_utility.express as pux
 from plotly_utility.offline import plot
-import plotly.express as px
-import plotly
-
 
 if __name__ == "__main__":
     df = px.data.tips()
@@ -24,12 +24,17 @@ if __name__ == "__main__":
         # weight="size"
     )
 
-    plot([
-        pux.histogram(df, title="plotly_utility.express.histogram", **common_kwargs),
-        px.histogram(df, title="plotly.express.histogram", **common_kwargs)
-    ])
+    plot(
+        [
+            pux.histogram(
+                df, title="plotly_utility.express.histogram", **common_kwargs
+            ),
+            px.histogram(df, title="plotly.express.histogram", **common_kwargs),
+        ]
+    )
 
     import pandas as pd
+
     df = pd.read_csv("https://storage.googleapis.com/tf-datasets/titanic/train.csv")
     df = df.sort_values(by="age")
     figs = list(

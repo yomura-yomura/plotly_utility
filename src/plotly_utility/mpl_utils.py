@@ -1,5 +1,6 @@
-import matplotlib as mpl
 import contextlib
+
+import matplotlib as mpl
 
 
 @contextlib.contextmanager

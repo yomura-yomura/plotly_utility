@@ -1,9 +1,8 @@
-import plotly.express as px
-from . import _histogram
-import plotly.graph_objs as go
 import numpy_utility as npu
-from . import _core
+import plotly.express as px
+import plotly.graph_objs as go
 
+from . import _core, _histogram
 
 __all__ = ["scatter"]
 
@@ -53,18 +52,18 @@ def scatter(
     template=None,
     width=None,
     height=None,
-
-    nbinsx=None, nbinsy=None,
-    use_lob_x_bins=False, use_lob_y_bins=False
+    nbinsx=None,
+    nbinsy=None,
+    use_lob_x_bins=False,
+    use_lob_y_bins=False,
 ):
-
     if npu.is_array(facet_col):
         sep = ", "
         _new_face_col = sep.join(facet_col)
-        data_frame[_new_face_col] = data_frame[facet_col].apply(
-            lambda s: s.astype(str)
-        ).apply(
-            lambda r: sep.join(r), axis=1
+        data_frame[_new_face_col] = (
+            data_frame[facet_col]
+            .apply(lambda s: s.astype(str))
+            .apply(lambda r: sep.join(r), axis=1)
         )
         facet_col = _new_face_col
 
@@ -90,23 +89,35 @@ def _scatter(args):
         if "histogram" in (args["marginal_x"], args["marginal_y"]):
             if args["marginal_x"] == "histogram":
                 new_marginal_x_histogram = _histogram.histogram(
-                    data_frame, x=x, color=color, nbins=args["nbinsx"], category_orders=args["category_orders"],
-                    use_log_x_bins=args["use_lob_x_bins"]
+                    data_frame,
+                    x=x,
+                    color=color,
+                    nbins=args["nbinsx"],
+                    category_orders=args["category_orders"],
+                    use_log_x_bins=args["use_lob_x_bins"],
                 )
                 new_marginal_x_histogram.update_traces(opacity=0.5, showlegend=False)
-                fig.add_traces(new_marginal_x_histogram.data,
-                               rows=[2] * len(new_marginal_x_histogram.data),
-                               cols=[1] * len(new_marginal_x_histogram.data))
+                fig.add_traces(
+                    new_marginal_x_histogram.data,
+                    rows=[2] * len(new_marginal_x_histogram.data),
+                    cols=[1] * len(new_marginal_x_histogram.data),
+                )
 
             if args["marginal_y"] == "histogram":
                 new_marginal_y_histogram = _histogram.histogram(
-                    data_frame, y=y, color=color, nbins=args["nbinsy"], category_orders=args["category_orders"],
-                    use_log_x_bins=args["use_lob_y_bins"]
+                    data_frame,
+                    y=y,
+                    color=color,
+                    nbins=args["nbinsy"],
+                    category_orders=args["category_orders"],
+                    use_log_x_bins=args["use_lob_y_bins"],
                 )
                 new_marginal_y_histogram.update_traces(opacity=0.5, showlegend=False)
-                fig.add_traces(new_marginal_y_histogram.data,
-                               rows=[1] * len(new_marginal_y_histogram.data),
-                               cols=[2] * len(new_marginal_y_histogram.data))
+                fig.add_traces(
+                    new_marginal_y_histogram.data,
+                    rows=[1] * len(new_marginal_y_histogram.data),
+                    cols=[2] * len(new_marginal_y_histogram.data),
+                )
 
             fig.update_layout(
                 # barmode=barmode,

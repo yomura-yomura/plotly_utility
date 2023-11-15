@@ -1,8 +1,8 @@
 import numpy as np
-import plotly_utility.subplots
-import plotly_utility.express as pux
 import plotly.express as px
 
+import plotly_utility.express as pux
+import plotly_utility.subplots
 
 if __name__ == "__main__":
     np.random.seed(0)
@@ -15,8 +15,6 @@ if __name__ == "__main__":
     res_fig = px.box(x=x, facet_row=row)
 
     fig = plotly_utility.subplots.vstack_alternately(
-        res_fig, hist_fig,
-        small_spacing_fraction=0.1,
-        vertical_spacing=0.3
+        res_fig, hist_fig, small_spacing_fraction=0.1, vertical_spacing=0.3
     )
     fig.show()

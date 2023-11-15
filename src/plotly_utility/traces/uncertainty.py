@@ -1,15 +1,20 @@
-import numpy as np
 import more_itertools
+import numpy as np
 import plotly.express as px
 import plotly.graph_objs as go
-
 
 __all__ = ["get_uncertainty_trace"]
 
 
 def get_uncertainty_trace(
-        x, lower_y, upper_y, name=None, flip_xy=False,
-        discrete_values=False, marker_color="#444444", opacity=0.3
+    x,
+    lower_y,
+    upper_y,
+    name=None,
+    flip_xy=False,
+    discrete_values=False,
+    marker_color="#444444",
+    opacity=0.3,
 ):
     if name is None:
         name = f"Systematic Uncertainty Band"
@@ -38,11 +43,13 @@ def get_uncertainty_trace(
         x=np.append(x, x[::-1]),
         y=np.append(lower_y, upper_y[::-1]),
         line=dict(width=0),
-        fillcolor='rgba({}, {}, {}, {})'.format(*px.colors.hex_to_rgb(marker_color), opacity),
-        fill='toself',
+        fillcolor="rgba({}, {}, {}, {})".format(
+            *px.colors.hex_to_rgb(marker_color), opacity
+        ),
+        fill="toself",
         hoverinfo="skip",
         showlegend=True,
-        legendgroup="Systematic Uncertainty"
+        legendgroup="Systematic Uncertainty",
     )
 
     if flip_xy:

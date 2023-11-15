@@ -27,3 +27,12 @@ version = {attr = "plotly_utility.__version__"}
 # パッケージ作成時に指定のファイルにバージョン情報を書き込む
 [tool.setuptools_scm]
 write_to = "src/plotly_utility/_version.py"
+
+[tool.isort]
+include_trailing_comma = true
+multi_line_output = 3
+line_length = 120
+profile = "black"
+
+[tool.black]
+line-length = 120

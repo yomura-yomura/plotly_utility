@@ -1,11 +1,9 @@
-import plotly.graph_objs as go
 import pathlib
+
 import numpy as np
+import plotly.graph_objs as go
 
-
-__all__ = [
-    "init_mapbox_fig", "set_auto_margin"
-]
+__all__ = ["init_mapbox_fig", "set_auto_margin"]
 
 
 def init_mapbox_fig(fig: go.Figure):
@@ -13,7 +11,12 @@ def init_mapbox_fig(fig: go.Figure):
     set_auto_margin(fig)
 
 
-def set_auto_margin(fig: go.Figure, margin_scale=1.2, graph_width_scale_in_fig=0.9, graph_height_scale_in_fig=0.5):
+def set_auto_margin(
+    fig: go.Figure,
+    margin_scale=1.2,
+    graph_width_scale_in_fig=0.9,
+    graph_height_scale_in_fig=0.5,
+):
     x1 = min(lon for trace in fig.data for lon in trace["lon"])
     x2 = max(lon for trace in fig.data for lon in trace["lon"])
     y1 = min(lat for trace in fig.data for lat in trace["lat"])
@@ -23,7 +26,7 @@ def set_auto_margin(fig: go.Figure, margin_scale=1.2, graph_width_scale_in_fig=0
     height = fig.layout.height * graph_height_scale_in_fig
     max_bound = max(
         (margin_scale * abs(x1 - x2) * 111) / width,
-        (margin_scale * abs(y1 - y2) * 111) / height
+        (margin_scale * abs(y1 - y2) * 111) / height,
     )  # km / px
     zoom = _km_per_px_vs_zoom(max(max_bound, 4.777 / 1000))
     center = {"lon": (x1 + x2) / 2, "lat": (y1 + y2) / 2}
